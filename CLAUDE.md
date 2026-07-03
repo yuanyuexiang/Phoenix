@@ -2,59 +2,77 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 当前状态
-
-**这是一个尚未开始编码的仓库。** 目前只包含一份产品说明书:
-`企业智能文档处理平台_产品说明书_V1.0.docx`。没有任何源代码、构建系统、依赖清单或测试,
-也还不是一个 git 仓库。
-
-在开始实现时,请依据下方的架构从零搭建项目,不要假设已有目录结构。这份 `.docx` 是需求的
-唯一来源——在做设计决策前先阅读它(解压后提取 `word/document.xml`,再去掉 XML 标签即可得到正文)。
-
 ## 产品:Phoenix —— 企业智能文档处理平台(DIP)
 
-> **Phoenix** 是本产品的项目代号(与仓库目录名一致)。
+> **Phoenix** 是项目代号。需求的唯一来源是 `docs/产品说明书_企业智能文档处理平台_V1.0.md`
+> (客户确认版,其中【待确认】项尚未定稿);同目录 `.docx` 是最初的原始说明书。
+> 产品/领域术语请与说明书保持一致(中文)。
 
-通过 OCR + AI 提取 + 规则校验,把非结构化的企业文档(扫描件、PDF、Word、Excel、图片)
-转换为结构化数据,再写入数据库和文件/对象存储。平台设计为通过 **MCP Server** 接口供
-**WorkBuddy** 调用。
+通过 OCR + AI 提取 + 规则校验,把非结构化企业文档转换为结构化数据,写入 PostgreSQL
+并归档到 MinIO。**交付形态:WorkBuddy 中的「文档处理专家」**,底层是本平台暴露的
+MCP Server(连接器)。
 
-### 处理流水线
-
-核心业务流程是一条流水线,每个阶段都是天然的服务/模块边界:
+## 顶层结构(按技术栈分)
 
 ```
-上传 → OCR识别 → 文档解析 → AI字段提取 → 规则校验
-     → 人工审核(可选) → 写入数据库 → 文件归档 → 完成
+docs/       产品文档(说明书)
+frontend/   前端管理后台 —— React 18 + Ant Design 5 + Vite(TypeScript)
+backend/    Go 后端,单一 go.mod,四个服务入口在 cmd/ 下
+ocr/        OCR 服务 —— Python FastAPI + PaddleOCR
+deploy/     docker-compose(9 容器)
+samples/    演示样例文档
 ```
 
-### 规划中的架构(来自说明书,尚未实现)
+## 常用命令(全部在仓库根目录执行)
 
-- **前端管理后台** —— 管理控制台
-- **OCR 服务** —— PaddleOCR
-- **文档解析服务** —— PDF / Word / Excel 内容提取
-- **AI 服务** —— 使用 DeepSeek / Qwen 大模型做字段提取
-- **工作流引擎** —— 编排流水线各阶段,包含可选的人工审核环节
-- **MCP Server** —— WorkBuddy 的集成入口(见下)
-- **数据存储** —— PostgreSQL(结构化数据)、MinIO(对象/文件存储)、Redis(缓存/队列)
+```bash
+make build / test / vet      # Go:构建 / 测试 / vet(自动 cd backend)
+cd backend && go test ./internal/validate -run TestRunViolations   # 单个测试
 
-### 规划中的技术选型
+make infra-up                # 拉起 Postgres/MinIO/Redis/OCR 容器
+make run-all                 # 前台并行起 4 个 Go 服务(Ctrl-C 全停)
+make fe-dev                  # 前端 dev server(8084,/api 代理到 workflow)
+make smoke                   # 端到端冒烟:模拟 WorkBuddy 调用五个 MCP 工具
 
-Go · PaddleOCR · DeepSeek/Qwen · PostgreSQL · MinIO · Redis · Docker
+make fe-install / fe-build   # 前端依赖 / 生产构建
+make compose-up              # 全套容器化(前端由 nginx 托管)
+```
 
-### MCP 集成(WorkBuddy)
+**端口约定**(本机其他项目占用了 5432/8000/9001,宿主机端口整体错开):
+mcp **8080**(`/mcp`)· workflow **8081** · parser **8082** · ai **8083** ·
+admin 前端 **8084** · OCR **8001** · Postgres **5433** · MinIO **9100/9101** · Redis **6380**。
+`backend/internal/config` 的默认值与这些端口一致,开箱即用。
 
-平台对外暴露一个 MCP Server。WorkBuddy 通过调用以下 MCP 工具来完成自动化处理——
-把这些工具名/契约当作对外集成规范:
+## 架构:多服务(对应说明书 §7 系统组成)
 
-- `upload_document`
-- `extract_fields`
-- `validate_document`
-- `save_database`
-- `query_document`
+```
+WorkBuddy ─MCP→ backend/cmd/mcp ──┐
+                                  ├─REST→ backend/cmd/workflow ─→ backend/cmd/parser(office 文档)
+浏览器 ───→ frontend(nginx/vite)─┘        │      │    └────────→ ocr/(图片,Python)
+             /api 反代 workflow            │      │      └──────→ backend/cmd/ai(字段提取)
+                                     PostgreSQL  MinIO
+```
 
-## 开发注意事项
+- `backend/cmd/mcp` —— MCP Server(官方 go-sdk,Streamable HTTP),无状态,转调 workflow
+- `backend/cmd/workflow` —— **工作流引擎**,唯一持有存储的服务;REST API 见其 main.go 顶部注释;
+  编排逻辑在 `internal/pipeline`(按扩展名路由:图片→OCR,office→parser;再调 ai 提取)
+- `backend/cmd/parser` —— 文档解析,无状态;核心逻辑 `internal/parser`(txt/docx 已支持,**PDF/xlsx/doc 未实现**)
+- `backend/cmd/ai` —— AI 字段提取,无状态;字段定义随请求下发;`internal/extract` 提供
+  `Mock`("标签: 值"行匹配)与 `LLM`(OpenAI 兼容端点,设 `PHX_LLM_ENDPOINT` 自动切换,DeepSeek/Qwen 通用)
+- `backend/cmd/smoke` —— 冒烟客户端(模拟 WorkBuddy),不是服务
+- `frontend/` —— 管理后台:文档列表、**人工审核**(字段修改→入库);生产用 nginx 托管并反代 `/api`
+- `backend/internal/api` —— 服务间 HTTP 契约 DTO;`internal/clients` —— 服务间客户端
+- `backend/internal/schema` —— **可配置单据类型**:`backend/configs/doctypes/*.yaml` 定义字段与
+  校验规则,加单据类型不改代码
+- `backend/internal/store` —— Postgres(pgx,迁移内嵌)+ MinIO;字段存 JSONB
 
-- 说明书为中文,产品/领域术语请与其保持一致。MCP 工具名必须与上面完全一致(它们是对外契约)。
-- 目前没有构建、lint 或测试命令。等 Go 项目搭建好后,请在此文件补充实际的
-  `go build` / `go test` / lint 命令,以及如何运行单个测试。
+流水线状态机(`internal/model.Status`):`uploaded → extracted → validated|needs_review → saved`,
+失败 → `failed`;状态持久化,调用方可分步驱动、断点续跑。
+
+## 硬性约束
+
+- **MCP 工具名是对外契约**(说明书 §8.1),不得改名:`upload_document` / `extract_fields` /
+  `validate_document` / `save_database` / `query_document`
+- **字段提取逻辑必须留在平台内**(说明书 §13):模型来源可配置,但提取不外包给 WorkBuddy
+- 大文件走 `file_url` 上传(MCP 传 base64 会撑爆上下文);流水线耗时操作未来要改异步任务语义
+  (Redis 已预留,尚未使用)

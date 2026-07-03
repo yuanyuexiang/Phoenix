@@ -1,0 +1,115 @@
+# Phoenix 全套服务(对应说明书 §7 系统组成):
+#   mcp(连接器/主入口) workflow(工作流引擎) parser(文档解析) ai(AI提取)
+#   ocr(PaddleOCR) admin(前端管理后台) + postgres/minio/redis
+#
+# 全套启动:  docker compose -f deploy/docker-compose.yml up -d --build
+# 仅基础设施(本机调试 Go/前端时):
+#   docker compose -f deploy/docker-compose.yml up -d postgres minio redis ocr
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: phoenix
+      POSTGRES_PASSWORD: phoenix
+      POSTGRES_DB: phoenix
+    ports:
+      - "5433:5432" # 宿主机端口整体错开,避免与本机其他项目冲突
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phoenix"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: phoenix
+      MINIO_ROOT_PASSWORD: phoenix-secret
+    ports:
+      - "9100:9000"
+      - "9101:9001" # Web 控制台
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis: # 预留:后续异步任务队列/缓存(说明书 §7)
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+  ocr: # OCR 服务(Python PaddleOCR)
+    build: ../ocr
+    ports:
+      - "8001:8000"
+    volumes:
+      - paddlemodels:/root/.paddleocr # 复用已下载的模型
+
+  parser: # 文档解析服务
+    build:
+      context: ../backend
+      args: { SERVICE: parser }
+    ports:
+      - "8082:8082"
+
+  ai: # AI 字段提取服务
+    build:
+      context: ../backend
+      args: { SERVICE: ai }
+    environment:
+      # 配置 LLM 后自动切换真实提取器,不配则用 Mock(说明书 §13 模型来源可配置):
+      # PHX_LLM_ENDPOINT: https://api.deepseek.com/v1
+      # PHX_LLM_API_KEY: ${DEEPSEEK_API_KEY}
+      # PHX_LLM_MODEL: deepseek-chat
+      PHX_AI_ADDR: ":8083"
+    ports:
+      - "8083:8083"
+
+  workflow: # 工作流引擎(编排 + 存储)
+    build:
+      context: ../backend
+      args: { SERVICE: workflow }
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      PHX_DB_DSN: postgres://phoenix:phoenix@postgres:5432/phoenix?sslmode=disable
+      PHX_MINIO_ENDPOINT: minio:9000
+      PHX_MINIO_ACCESS_KEY: phoenix
+      PHX_MINIO_SECRET_KEY: phoenix-secret
+      PHX_OCR_URL: http://ocr:8000
+      PHX_PARSER_URL: http://parser:8082
+      PHX_AI_URL: http://ai:8083
+    ports:
+      - "8081:8081"
+
+  mcp: # MCP Server(WorkBuddy 连接器,主要使用入口)
+    build:
+      context: ../backend
+      args: { SERVICE: mcp }
+    depends_on:
+      - workflow
+    environment:
+      PHX_WORKFLOW_URL: http://workflow:8081
+    ports:
+      - "8080:8080"
+
+  admin: # 前端管理后台(React + Ant Design,nginx 托管并反代 /api 到 workflow)
+    build: ../frontend
+    depends_on:
+      - workflow
+    ports:
+      - "8084:8084"
+
+volumes:
+  pgdata:
+  miniodata:
+  paddlemodels:

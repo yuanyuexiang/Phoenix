@@ -8,8 +8,9 @@
 把非结构化文档转换为结构化数据,并自动写入数据库和文件服务器。可作为 **MCP 服务**接入
 [WorkBuddy](#与-workbuddy-集成)。
 
-> ⚠️ **项目状态:规划中。** 当前仓库仅包含产品说明书,尚未开始编码。本 README 依据
-> 《企业智能文档处理平台_产品说明书_V1.0》整理。
+> **项目状态:开发中。** Monorepo 多服务骨架已就绪(MCP 连接器、工作流引擎、
+> 文档解析、AI 提取、OCR、管理后台六个服务),端到端流程(上传→提取→校验→
+> 人工审核→入库→查询)已跑通;PDF/Excel 解析、LLM 真实提取待接入客户环境后启用。
 
 ## 目标用户
 
@@ -37,19 +38,30 @@
         → 人工审核(可选) → 写入数据库 → 文件归档 → 完成
 ```
 
-## 系统架构
+## 仓库结构(Monorepo,按技术栈分)
 
-| 组件 | 职责 |
-|------|------|
-| 前端管理后台 | 管理控制台 |
-| OCR 服务 | 图片/扫描件文字识别(PaddleOCR) |
-| 文档解析服务 | PDF / Word / Excel 内容提取 |
-| AI 服务 | 基于 DeepSeek / Qwen 的字段提取 |
-| 工作流引擎 | 编排流水线各阶段,含可选人工审核 |
-| MCP Server | WorkBuddy 集成入口 |
-| 数据库 | PostgreSQL,存储结构化数据 |
-| 对象存储 | MinIO,存储原始文件 |
-| 缓存/队列 | Redis |
+```
+docs/       产品文档(说明书)
+frontend/   前端管理后台 —— React + Ant Design(人工审核、查询)
+backend/    Go 后端 —— 四个服务:workflow / parser / ai / mcp
+ocr/        OCR 服务 —— Python + PaddleOCR
+deploy/     docker-compose
+samples/    演示样例
+```
+
+## 系统架构(对应说明书 §7)
+
+| 组件 | 位置 | 职责 |
+|------|------|------|
+| MCP Server | `backend/cmd/mcp` | WorkBuddy 连接器,主要使用入口(8080,`/mcp`) |
+| 工作流引擎 | `backend/cmd/workflow` | 编排流水线、持有存储,REST API(8081) |
+| 文档解析服务 | `backend/cmd/parser` | PDF / Word / Excel → 纯文本(8082) |
+| AI 服务 | `backend/cmd/ai` | 大模型字段提取,Mock/LLM 可切换(8083) |
+| OCR 服务 | `ocr/` | 图片/扫描件文字识别,PaddleOCR/Python(8001) |
+| 前端管理后台 | `frontend/` | React + Ant Design:人工审核、查询(8084) |
+| 数据库 | — | PostgreSQL,存储结构化数据(5433) |
+| 对象存储 | — | MinIO,存储原始文件(9100/9101) |
+| 缓存/队列 | — | Redis,预留(6380) |
 
 ## 技术选型
 
@@ -57,7 +69,7 @@ Go · PaddleOCR · DeepSeek / Qwen · PostgreSQL · MinIO · Redis · Docker
 
 ## 与 WorkBuddy 集成
 
-平台对外提供一个 **MCP Server**,WorkBuddy 通过调用以下 MCP 工具完成自动化文档处理:
+产品以 WorkBuddy 中的**「文档处理专家」**作为客户使用入口(交付形态);专家底层通过 **MCP Server**(连接器形态)调用以下工具完成自动化文档处理:
 
 | 工具 | 作用 |
 |------|------|
@@ -75,5 +87,18 @@ Go · PaddleOCR · DeepSeek / Qwen · PostgreSQL · MinIO · Redis · Docker
 
 ## 快速开始
 
-> 项目尚未搭建,构建与运行方式待补充。完成 Go 项目初始化后,请在此处补充
-> 环境依赖、`docker compose` 启动、构建与测试命令。
+依赖:Go 1.26+、Node 20+、Docker。
+
+```bash
+make infra-up       # 拉起 Postgres / MinIO / Redis / OCR 容器
+make run-all        # 前台并行启动 4 个 Go 服务(Ctrl-C 全停)
+make fe-install && make fe-dev   # 另开终端:前端 dev server(8084)
+make smoke          # 另开终端:模拟 WorkBuddy 调用五个 MCP 工具,端到端跑通流水线
+```
+
+- MCP 端点:`http://localhost:8080/mcp`;管理后台:`http://localhost:8084`(人工审核在这里)。
+- 全套容器化部署:`make compose-up`(前端打包后由 nginx 托管);单元测试:`make test`。
+- 单据类型与提取字段在 `backend/configs/doctypes/*.yaml` 中配置,新增单据类型无需改代码。
+- AI 服务默认使用 Mock 提取器;配置 `PHX_LLM_ENDPOINT` / `PHX_LLM_API_KEY` 后自动切换到
+  真实大模型(DeepSeek / Qwen 等 OpenAI 兼容端点均可)。
+- 本机宿主端口整体错开避免冲突:各服务端口见上方架构表。

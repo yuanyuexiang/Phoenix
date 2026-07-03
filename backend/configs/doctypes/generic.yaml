@@ -1,0 +1,38 @@
+# 通用单据示例 —— 单据类型字段 schema 的参考模板。
+#
+# 新增一种单据类型 = 在本目录加一个 YAML 文件,无需改代码:
+#   name:   单据类型标识,MCP 调用 upload_document 时的 doc_type
+#   fields: 要提取的字段清单;label/aliases 是字段在文档中的叫法,
+#           rule 是校验规则(required / pattern / enum)。
+#
+# 客户确认字段清单后(说明书 §14 第 1 条),按此格式为每类单据建档。
+name: generic
+title: 通用单据
+description: 演示与联调用的通用单据类型,字段清单待客户确认后按实际单据替换。
+fields:
+  - name: doc_no
+    label: 编号
+    aliases: [单据编号, 文档编号]
+    rule:
+      required: true
+  - name: title
+    label: 标题
+    aliases: [主题, 名称]
+    rule:
+      required: true
+  - name: amount
+    label: 金额
+    aliases: [总金额, 合计金额, 价税合计]
+    rule:
+      pattern: '[0-9,]+(\.[0-9]{1,2})?'
+  - name: issue_date
+    label: 日期
+    aliases: [开具日期, 签署日期, 落款日期]
+    rule:
+      pattern: '\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?'
+  - name: party_a
+    label: 甲方
+    aliases: [甲方单位, 委托方]
+  - name: party_b
+    label: 乙方
+    aliases: [乙方单位, 受托方]
