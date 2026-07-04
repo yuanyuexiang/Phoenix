@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
+	"github.com/yuanyuexiang/phoenix/internal/httpx"
 	"github.com/yuanyuexiang/phoenix/internal/parser"
 )
 
@@ -26,8 +27,7 @@ func main() {
 	})
 	mux.HandleFunc("POST /parse", handleParse)
 
-	slog.Info("parser 文档解析服务已启动", "addr", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := httpx.Serve(addr, mux, "parser 文档解析服务"); err != nil {
 		slog.Error("parser 服务退出", "error", err)
 		os.Exit(1)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/yuanyuexiang/phoenix/internal/clients"
 	"github.com/yuanyuexiang/phoenix/internal/config"
+	"github.com/yuanyuexiang/phoenix/internal/httpx"
 	"github.com/yuanyuexiang/phoenix/internal/mcpserver"
 )
 
@@ -31,8 +32,8 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	slog.Info("mcp 连接器已启动", "addr", addr, "endpoint", "/mcp", "workflow", cfg.WorkflowBaseURL)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	slog.Info("mcp 连接器配置", "endpoint", "/mcp", "workflow", cfg.WorkflowBaseURL)
+	if err := httpx.Serve(addr, mux, "mcp 连接器"); err != nil {
 		slog.Error("mcp 服务退出", "error", err)
 		os.Exit(1)
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/config"
 	"github.com/yuanyuexiang/phoenix/internal/extract"
+	"github.com/yuanyuexiang/phoenix/internal/httpx"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 )
 
@@ -28,7 +29,7 @@ func main() {
 	if cfg.LLMEndpoint != "" {
 		extractor = extract.NewLLM(cfg.LLMEndpoint, cfg.LLMAPIKey, cfg.LLMModel)
 	}
-	slog.Info("ai 字段提取服务已启动", "addr", addr, "extractor", extractor.Name())
+	slog.Info("ai 字段提取器就绪", "extractor", extractor.Name())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -39,7 +40,7 @@ func main() {
 		handleExtract(w, r, extractor)
 	})
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := httpx.Serve(addr, mux, "ai 字段提取服务"); err != nil {
 		slog.Error("ai 服务退出", "error", err)
 		os.Exit(1)
 	}

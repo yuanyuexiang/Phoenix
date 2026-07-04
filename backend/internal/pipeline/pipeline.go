@@ -85,6 +85,9 @@ func (p *Pipeline) ExtractFields(ctx context.Context, id string) (*model.Documen
 		if err != nil {
 			return p.fail(ctx, doc, err)
 		}
+		if strings.TrimSpace(text) == "" {
+			return p.fail(ctx, doc, fmt.Errorf("OCR/解析未从文档中识别出任何文字,请确认上传的是单据而非普通照片"))
+		}
 		doc.Text = text
 	}
 

@@ -65,8 +65,11 @@ WorkBuddy ─MCP→ backend/cmd/mcp ──┐
 ```
 
 - `backend/cmd/mcp` —— MCP Server(官方 go-sdk,Streamable HTTP),无状态,转调 workflow
-- `backend/cmd/workflow` —— **工作流引擎**,唯一持有存储的服务;REST API 见其 main.go 顶部注释;
+- `backend/cmd/workflow` —— **工作流引擎**,唯一持有存储的服务;cmd 只做装配,
+  REST API 层(handler/鉴权/健康聚合)在 `internal/workflowapi`;
   编排逻辑在 `internal/pipeline`(按扩展名路由:图片→OCR,office→parser;再调 ai 提取)
+- `internal/httpx` —— 各服务共用的 HTTP 启动封装(优雅退出 + ReadHeaderTimeout),
+  **新服务入口一律用 `httpx.Serve`,不要裸用 `http.ListenAndServe`**
 - `backend/cmd/parser` —— 文档解析,无状态;核心逻辑 `internal/parser`(txt/docx 已支持,**PDF/xlsx/doc 未实现**)
 - `backend/cmd/ai` —— AI 字段提取,无状态;字段定义随请求下发;`internal/extract` 提供
   `Mock`("标签: 值"行匹配)与 `LLM`(OpenAI 兼容端点,设 `PHX_LLM_ENDPOINT` 自动切换,DeepSeek/Qwen 通用)
