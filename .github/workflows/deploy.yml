@@ -71,7 +71,7 @@ jobs:
     name: SSH 部署
     needs: build-push
     runs-on: ubuntu-latest
-    environment: production
+    #environment: production
     steps:
       - uses: actions/checkout@v4
 
