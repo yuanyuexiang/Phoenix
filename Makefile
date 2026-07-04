@@ -37,16 +37,16 @@ run-all:
 smoke:
 	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt
 
-# ---- 前端(frontend/)----
+# ---- 前端(frontend/,Next.js)----
 .PHONY: fe-install fe-dev fe-build
 fe-install:
 	cd frontend && npm install
 
-fe-dev: # 开发服务器,8084,/api 代理到本机 workflow
+fe-dev: # 开发服务器,8084,/api 经 next rewrites 代理到本机 workflow
 	cd frontend && npm run dev
 
-fe-build:
-	cd frontend && npm run build
+fe-build: # 静态导出到 frontend/out(生产由 nginx 托管,见 frontend/Dockerfile)
+	cd frontend && BUILD_STATIC=1 npm run build
 
 # ---- 基础设施 / 部署(deploy/)----
 .PHONY: infra-up infra-down compose-up compose-down

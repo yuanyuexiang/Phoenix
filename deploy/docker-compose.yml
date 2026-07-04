@@ -88,6 +88,7 @@ services:
       PHX_OCR_URL: http://ocr:8000
       PHX_PARSER_URL: http://parser:8082
       PHX_AI_URL: http://ai:8083
+      PHX_ADMIN_PASSWORD: phoenix123 # 管理后台访问密码,生产务必修改
     ports:
       - "8081:8081"
 
@@ -99,6 +100,7 @@ services:
       - workflow
     environment:
       PHX_WORKFLOW_URL: http://workflow:8081
+      PHX_ADMIN_PASSWORD: phoenix123 # 与 workflow 一致,内部调用凭证
     ports:
       - "8080:8080"
 

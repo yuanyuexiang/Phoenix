@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
@@ -74,7 +76,16 @@ func run() error {
 		MinConfidence: cfg.MinConfidence,
 	}
 
-	s := &server{p: p, registry: registry}
+	s := &server{
+		p:        p,
+		registry: registry,
+		db:       db,
+		healthTargets: []healthTarget{ // 服务状态页(管理后台)聚合探测
+			{"parser 文档解析", cfg.ParserBaseURL + "/healthz"},
+			{"ai 字段提取", cfg.AIBaseURL + "/healthz"},
+			{"ocr 识别", cfg.OCRBaseURL + "/healthz"},
+		},
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -86,14 +97,108 @@ func run() error {
 	mux.HandleFunc("POST /api/documents/{id}/save", s.save)
 	mux.HandleFunc("GET /api/documents", s.query)
 	mux.HandleFunc("GET /api/doctypes", s.doctypes)
+	mux.HandleFunc("GET /api/status", s.status)
+
+	// 鉴权:/api/auth/* 与 /healthz 开放,其余 /api 需要 X-Access-Key(参考 Atlas 的 entry-gate 模式)
+	mux.HandleFunc("GET /api/auth/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]bool{"required": cfg.AdminPassword != ""})
+	})
+	mux.HandleFunc("GET /api/auth/check", func(w http.ResponseWriter, r *http.Request) {
+		if !keyOK(cfg.AdminPassword, r) {
+			writeError(w, http.StatusUnauthorized, "访问密码不正确")
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	})
+
+	if cfg.AdminPassword == "" {
+		slog.Warn("PHX_ADMIN_PASSWORD 为空,workflow API 未启用鉴权(仅限本机联调)")
+	} else if cfg.AdminPassword == "phoenix123" {
+		slog.Warn("正在使用默认访问密码 phoenix123,生产环境务必通过 PHX_ADMIN_PASSWORD 修改")
+	}
 
 	slog.Info("workflow 工作流引擎已启动", "addr", addr)
-	return http.ListenAndServe(addr, mux)
+	return http.ListenAndServe(addr, authMiddleware(cfg.AdminPassword, mux))
+}
+
+// keyOK 常量时间比较请求头中的访问密钥。
+func keyOK(password string, r *http.Request) bool {
+	if password == "" {
+		return true
+	}
+	got := r.Header.Get("X-Access-Key")
+	return got != "" && subtle.ConstantTimeCompare([]byte(got), []byte(password)) == 1
+}
+
+// authMiddleware 保护除 /healthz 与 /api/auth/* 之外的全部接口。
+func authMiddleware(password string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		open := r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/api/auth/")
+		if open || keyOK(password, r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		writeError(w, http.StatusUnauthorized, "未授权:缺少或错误的访问密钥(X-Access-Key)")
+	})
+}
+
+type healthTarget struct {
+	Name string
+	URL  string
 }
 
 type server struct {
-	p        *pipeline.Pipeline
-	registry *schema.Registry
+	p             *pipeline.Pipeline
+	registry      *schema.Registry
+	db            *store.DB
+	healthTargets []healthTarget
+}
+
+// status 聚合平台各组件的健康状态,供管理后台「服务状态」页展示。
+func (s *server) status(w http.ResponseWriter, r *http.Request) {
+	type component struct {
+		Name      string `json:"name"`
+		OK        bool   `json:"ok"`
+		LatencyMS int64  `json:"latency_ms"`
+		Error     string `json:"error,omitempty"`
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	check := func(name string, fn func() error) component {
+		start := time.Now()
+		err := fn()
+		c := component{Name: name, OK: err == nil, LatencyMS: time.Since(start).Milliseconds()}
+		if err != nil {
+			c.Error = err.Error()
+		}
+		return c
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	components := []component{
+		check("workflow 工作流引擎", func() error { return nil }),
+		check("postgres 数据库", func() error { return s.db.Ping(ctx) }),
+	}
+	for _, t := range s.healthTargets {
+		t := t
+		components = append(components, check(t.Name, func() error {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.URL, nil)
+			if err != nil {
+				return err
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				return fmt.Errorf("不可达: %w", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("HTTP %d", resp.StatusCode)
+			}
+			return nil
+		}))
+	}
+	writeJSON(w, map[string]any{"components": components})
 }
 
 func (s *server) upload(w http.ResponseWriter, r *http.Request) {

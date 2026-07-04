@@ -71,6 +71,9 @@ func (db *DB) migrate(ctx context.Context) error {
 
 func (db *DB) Close() { db.pool.Close() }
 
+// Ping 用于健康检查。
+func (db *DB) Ping(ctx context.Context) error { return db.pool.Ping(ctx) }
+
 // CreateDocument 插入新文档记录。
 func (db *DB) CreateDocument(ctx context.Context, d *model.Document) error {
 	fields, issues, err := marshalJSON(d)

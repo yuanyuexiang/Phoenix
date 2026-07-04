@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+/* dark 变体由 <html data-theme> 显式驱动(参考 Atlas Council 的 token 架构),
+   不跟随系统 —— 主题切换只改 data-theme 属性。 */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ============================================================
+   原始调色板(raw palette)—— 主题切换只覆盖这一层。
+   组件使用语义 token(--color-*),经 @theme inline 指向这些变量,
+   换主题全站自动变色,组件无需改动。
+
+   语义角色:
+     surface  表面(页面底 → 卡片 → hover → 边框,数字越大越"重")
+     ink      文字(数字越大越深/越显眼)
+     accent   主操作/选中(企业蓝)
+     amber    待人工审核 / 警示
+     green    校验通过 / 已入库
+     red      失败 / 危险操作
+   ============================================================ */
+
+:root,
+[data-theme="light"] {
+  --p-surface-0:   #FFFFFF; /* 卡片 */
+  --p-surface-50:  #F6F8FB; /* 页面底 */
+  --p-surface-100: #EDF1F7; /* hover / 分组底 */
+  --p-surface-300: #D9E1EC; /* 边框 */
+
+  --p-ink-300: #8B98AC; /* 次要说明 */
+  --p-ink-500: #55647C; /* 常规正文 */
+  --p-ink-700: #2B3A52; /* 标题 */
+  --p-ink-900: #101B2D; /* 强调文字 */
+
+  --p-accent-100: #DBEAFE;
+  --p-accent-300: #93B8F8;
+  --p-accent-500: #2563EB;
+  --p-accent-700: #1D4ED8;
+
+  --p-amber-100: #FEF3C7;
+  --p-amber-500: #D97706;
+  --p-amber-700: #92600A;
+
+  --p-green-100: #D1FAE5;
+  --p-green-500: #059669;
+  --p-green-700: #047857;
+
+  --p-red-100: #FEE2E2;
+  --p-red-500: #DC2626;
+  --p-red-700: #B91C1C;
+
+  --p-shadow-1: 0 1px 2px rgba(16, 27, 45, 0.05), 0 2px 6px rgba(16, 27, 45, 0.06);
+  --p-shadow-2: 0 4px 12px rgba(16, 27, 45, 0.08), 0 12px 28px rgba(16, 27, 45, 0.1);
+}
+
+[data-theme="dark"] {
+  --p-surface-0:   #151C29; /* 卡片 */
+  --p-surface-50:  #0E141F; /* 页面底 */
+  --p-surface-100: #1C2534; /* hover / 分组底 */
+  --p-surface-300: #2C3850; /* 边框 */
+
+  --p-ink-300: #6D7C94;
+  --p-ink-500: #9AA8BE;
+  --p-ink-700: #CBD6E5;
+  --p-ink-900: #EFF3F9;
+
+  --p-accent-100: #1E3A8A;
+  --p-accent-300: #3B6FD4;
+  --p-accent-500: #5B8DEF;
+  --p-accent-700: #86ADF5;
+
+  --p-amber-100: #43320B;
+  --p-amber-500: #E8A33D;
+  --p-amber-700: #F5C878;
+
+  --p-green-100: #0B3A2A;
+  --p-green-500: #34C08B;
+  --p-green-700: #6FDCB2;
+
+  --p-red-100: #451717;
+  --p-red-500: #F06A6A;
+  --p-red-700: #F79C9C;
+
+  --p-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.45);
+  --p-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45), 0 14px 36px rgba(0, 0, 0, 0.55);
+}
+
+/* -------- 语义 token(组件只用这一层)-------- */
+@theme inline {
+  --color-surface-0:   var(--p-surface-0);
+  --color-surface-50:  var(--p-surface-50);
+  --color-surface-100: var(--p-surface-100);
+  --color-surface-300: var(--p-surface-300);
+
+  --color-ink-300: var(--p-ink-300);
+  --color-ink-500: var(--p-ink-500);
+  --color-ink-700: var(--p-ink-700);
+  --color-ink-900: var(--p-ink-900);
+
+  --color-accent-100: var(--p-accent-100);
+  --color-accent-300: var(--p-accent-300);
+  --color-accent-500: var(--p-accent-500);
+  --color-accent-700: var(--p-accent-700);
+
+  --color-amber-100: var(--p-amber-100);
+  --color-amber-500: var(--p-amber-500);
+  --color-amber-700: var(--p-amber-700);
+
+  --color-green-100: var(--p-green-100);
+  --color-green-500: var(--p-green-500);
+  --color-green-700: var(--p-green-700);
+
+  --color-red-100: var(--p-red-100);
+  --color-red-500: var(--p-red-500);
+  --color-red-700: var(--p-red-700);
+
+  --shadow-card: var(--p-shadow-1);
+  --shadow-pop: var(--p-shadow-2);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--p-surface-50);
+  color: var(--p-ink-700);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 原生控件在暗色下的配色跟随主题 */
+[data-theme="dark"] select,
+[data-theme="dark"] input,
+[data-theme="dark"] textarea {
+  color-scheme: dark;
+}

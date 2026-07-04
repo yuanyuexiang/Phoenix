@@ -20,7 +20,7 @@ func main() {
 	cfg := config.Load()
 	addr := cfg.HTTPAddr // 默认 :8080
 
-	wf := clients.NewWorkflow(cfg.WorkflowBaseURL)
+	wf := clients.NewWorkflow(cfg.WorkflowBaseURL, cfg.AdminPassword)
 	srv := mcpserver.New(wf, version)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 

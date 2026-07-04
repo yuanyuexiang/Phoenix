@@ -15,13 +15,24 @@ MCP Server(连接器)。
 ## 顶层结构(按技术栈分)
 
 ```
-docs/       产品文档(说明书)
-frontend/   前端管理后台 —— React 18 + Ant Design 5 + Vite(TypeScript)
+docs/       产品文档(说明书、WorkBuddy 接入指南)
+frontend/   前端管理后台 —— Next.js 16 + React 19 + Tailwind v4(TypeScript,无组件库)
 backend/    Go 后端,单一 go.mod,四个服务入口在 cmd/ 下
 ocr/        OCR 服务 —— Python FastAPI + PaddleOCR
 deploy/     docker-compose(9 容器)
 samples/    演示样例文档
 ```
+
+前端设计:三层主题 token(raw palette → `@theme inline` 语义色 → 组件),
+`<html data-theme>` 驱动 light/dark,企业蓝调性;NavRail 左侧图标导航
+(文档 `/`、审核 `/review`、单据类型 `/doctypes`、服务状态 `/status`),
+审核页为「队列列 + 编辑区」三列式。生产走 `BUILD_STATIC=1` 静态导出 + nginx
+反代 `/api`;开发用 next rewrites 代理(见 `frontend/next.config.ts`)。
+
+鉴权:workflow API 除 `/healthz`、`/api/auth/*` 外均要求请求头 `X-Access-Key`
+等于 `PHX_ADMIN_PASSWORD`(默认 `phoenix123`,置空关闭鉴权)。前端登录页 `/login`
+把密钥存 localStorage 并随请求携带,401 统一跳回登录;mcp 服务用同一环境变量
+作为内部调用凭证。MCP 端点(8080)自身的对外鉴权仍是【待确认】项。
 
 ## 常用命令(全部在仓库根目录执行)
 

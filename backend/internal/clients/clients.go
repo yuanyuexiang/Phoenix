@@ -138,14 +138,33 @@ func (c *AI) Extract(ctx context.Context, req api.ExtractRequest) (api.ExtractRe
 	return out, nil
 }
 
-// Workflow 是工作流引擎的客户端,MCP Server 与管理后台共用。
+// Workflow 是工作流引擎的客户端,MCP Server 等内部服务使用。
+// accessKey 非空时每个请求自动带上 X-Access-Key(workflow 开启鉴权时必需)。
 type Workflow struct {
 	base string
 	http *http.Client
 }
 
-func NewWorkflow(baseURL string) *Workflow {
-	return &Workflow{base: strings.TrimRight(baseURL, "/"), http: &http.Client{Timeout: 5 * time.Minute}}
+type accessKeyTransport struct {
+	key  string
+	base http.RoundTripper
+}
+
+func (t accessKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.key != "" {
+		req.Header.Set("X-Access-Key", t.key)
+	}
+	return t.base.RoundTrip(req)
+}
+
+func NewWorkflow(baseURL, accessKey string) *Workflow {
+	return &Workflow{
+		base: strings.TrimRight(baseURL, "/"),
+		http: &http.Client{
+			Timeout:   5 * time.Minute,
+			Transport: accessKeyTransport{key: accessKey, base: http.DefaultTransport},
+		},
+	}
 }
 
 func (c *Workflow) Upload(ctx context.Context, req api.UploadRequest) (api.DocumentView, error) {
