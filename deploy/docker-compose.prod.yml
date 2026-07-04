@@ -8,19 +8,18 @@
 #   其余服务(workflow/parser/ai/ocr/postgres/minio/redis)仅内部网络互通,不暴露。
 #
 # 注意:
-#   - 项目名/容器名用 phoenix-phoenix 前缀,避免与同服务器上其他 phoenix 项目冲突。
+#   - 项目名/容器名统一 phoenix 前缀。若服务器上仍有旧的同名 compose 项目(phoenix-backend 等),
+#     两个项目会共用项目名:部署脚本已不用 --remove-orphans,但仍建议先下线旧栈避免混淆。
 #   - 镜像由 GitHub Actions 构建推送(.github/workflows/deploy.yml),TAG 由部署时注入。
-#   - 服务器上 /opt/phoenix-phoenix/.env 提供机密配置,参考 .env.prod.example,勿入仓库。
+#   - 服务器上 /opt/phoenix/.env 提供机密配置,参考 .env.prod.example,勿入仓库。
 #
 # 使用:TAG=sha-xxxxxxx docker compose -f docker-compose.prod.yml --env-file .env up -d
-name: phoenix-phoenix
-
-x-image-prefix: &img ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}
+name: phoenix
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: phoenix-phoenix-postgres
+    container_name: phoenix-postgres
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
@@ -38,7 +37,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: phoenix-phoenix-minio
+    container_name: phoenix-minio
     restart: unless-stopped
     command: server /data
     environment:
@@ -56,13 +55,13 @@ services:
 
   redis: # 预留:异步任务队列/缓存
     image: redis:7-alpine
-    container_name: phoenix-phoenix-redis
+    container_name: phoenix-redis
     restart: unless-stopped
     networks: [internal]
 
   ocr:
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-phoenix-ocr:${TAG:-latest}
-    container_name: phoenix-phoenix-ocr
+    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-ocr:${TAG:-latest}
+    container_name: phoenix-ocr
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
@@ -71,16 +70,16 @@ services:
     networks: [internal]
 
   parser:
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-phoenix-parser:${TAG:-latest}
-    container_name: phoenix-phoenix-parser
+    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-parser:${TAG:-latest}
+    container_name: phoenix-parser
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
     networks: [internal]
 
   ai:
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-phoenix-ai:${TAG:-latest}
-    container_name: phoenix-phoenix-ai
+    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-ai:${TAG:-latest}
+    container_name: phoenix-ai
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
@@ -91,8 +90,8 @@ services:
     networks: [internal]
 
   workflow:
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-phoenix-workflow:${TAG:-latest}
-    container_name: phoenix-phoenix-workflow
+    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-workflow:${TAG:-latest}
+    container_name: phoenix-workflow
     restart: unless-stopped
     depends_on:
       postgres:
@@ -112,8 +111,8 @@ services:
     networks: [internal]
 
   mcp: # WorkBuddy 连接器,经 Traefik 以 /mcp 路径对外
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-phoenix-mcp:${TAG:-latest}
-    container_name: phoenix-phoenix-mcp
+    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-mcp:${TAG:-latest}
+    container_name: phoenix-mcp
     restart: unless-stopped
     depends_on: [workflow]
     environment:
@@ -124,16 +123,16 @@ services:
     labels:
       - "traefik.enable=true"
       # 同域名 /mcp 前缀路由到连接器;规则更长,优先级自然高于 admin 的 Host 规则
-      - "traefik.http.routers.phoenix-phoenix-mcp.rule=Host(`${DIP_DOMAIN:-phoenix.matrix-net.tech}`) && PathPrefix(`/mcp`)"
-      - "traefik.http.routers.phoenix-phoenix-mcp.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
-      - "traefik.http.routers.phoenix-phoenix-mcp.service=phoenix-phoenix-mcp"
-      - "traefik.http.services.phoenix-phoenix-mcp.loadbalancer.server.port=8080"
-      - "traefik.http.routers.phoenix-phoenix-mcp.tls=true"
-      - "traefik.http.routers.phoenix-phoenix-mcp.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
+      - "traefik.http.routers.phoenix-mcp.rule=Host(`${DIP_DOMAIN:-phoenix.matrix-net.tech}`) && PathPrefix(`/mcp`)"
+      - "traefik.http.routers.phoenix-mcp.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.phoenix-mcp.service=phoenix-mcp"
+      - "traefik.http.services.phoenix-mcp.loadbalancer.server.port=8080"
+      - "traefik.http.routers.phoenix-mcp.tls=true"
+      - "traefik.http.routers.phoenix-mcp.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
 
   admin: # 前端管理后台(nginx 托管 SPA 并反代 /api 到 workflow),域名主入口
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-phoenix-admin:${TAG:-latest}
-    container_name: phoenix-phoenix-admin
+    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-admin:${TAG:-latest}
+    container_name: phoenix-admin
     restart: unless-stopped
     depends_on: [workflow]
     environment:
@@ -141,12 +140,12 @@ services:
     networks: [internal, matrix-network]
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.phoenix-phoenix-admin.rule=Host(`${DIP_DOMAIN:-phoenix.matrix-net.tech}`)"
-      - "traefik.http.routers.phoenix-phoenix-admin.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
-      - "traefik.http.routers.phoenix-phoenix-admin.service=phoenix-phoenix-admin"
-      - "traefik.http.services.phoenix-phoenix-admin.loadbalancer.server.port=8084"
-      - "traefik.http.routers.phoenix-phoenix-admin.tls=true"
-      - "traefik.http.routers.phoenix-phoenix-admin.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
+      - "traefik.http.routers.phoenix-admin.rule=Host(`${DIP_DOMAIN:-phoenix.matrix-net.tech}`)"
+      - "traefik.http.routers.phoenix-admin.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.phoenix-admin.service=phoenix-admin"
+      - "traefik.http.services.phoenix-admin.loadbalancer.server.port=8084"
+      - "traefik.http.routers.phoenix-admin.tls=true"
+      - "traefik.http.routers.phoenix-admin.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
 
 volumes:
   pgdata:

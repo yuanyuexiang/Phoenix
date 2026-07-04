@@ -8,10 +8,10 @@
 # 可选 Variables(不设则用默认值):
 #   REGISTRY(默认 registry.cn-hangzhou.aliyuncs.com)
 #   REGISTRY_NAMESPACE(默认 yuanyuexiang)
-#   DEPLOY_DIR(默认 /opt/phoenix-phoenix)
+#   DEPLOY_DIR(默认 /opt/phoenix)
 #
 # 服务器前置(一次性):
-#   1. mkdir -p /opt/phoenix-phoenix && 按 deploy/.env.prod.example 写好 .env
+#   1. mkdir -p /opt/phoenix && 按 deploy/.env.prod.example 写好 .env
 #   2. Traefik 已运行且回源网络 matrix-network 已存在
 name: Deploy
 
@@ -62,8 +62,8 @@ jobs:
           push: true
           build-args: ${{ matrix.build_args }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/phoenix-phoenix-${{ matrix.name }}:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/phoenix-phoenix-${{ matrix.name }}:latest
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/phoenix-${{ matrix.name }}:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/phoenix-${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
 
@@ -86,7 +86,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: deploy/docker-compose.prod.yml
-          target: ${{ vars.DEPLOY_DIR || '/opt/phoenix-phoenix' }}
+          target: ${{ vars.DEPLOY_DIR || '/opt/phoenix' }}
           strip_components: 1
 
       - name: 拉取镜像并滚动更新
@@ -97,12 +97,13 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
           script: |
-            cd ${{ vars.DEPLOY_DIR || '/opt/phoenix-phoenix' }}
+            cd ${{ vars.DEPLOY_DIR || '/opt/phoenix' }}
             test -f .env || { echo "缺少 .env(参考仓库 deploy/.env.prod.example)"; exit 1; }
             echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ env.REGISTRY }} -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
             export TAG=${{ steps.meta.outputs.tag }}
             docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            # 不加 --remove-orphans:项目名 phoenix 若与服务器上历史栈重名,避免误删其容器
+            docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
             echo "部署完成:TAG=$TAG"
 
@@ -115,7 +116,7 @@ jobs:
           script_stop: true
           script: |
             sleep 10
-            for c in phoenix-phoenix-workflow phoenix-phoenix-mcp phoenix-phoenix-admin; do
+            for c in phoenix-workflow phoenix-mcp phoenix-admin; do
               STATE=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo missing)
               echo "$c: $STATE"
               [ "$STATE" = "running" ] || exit 1

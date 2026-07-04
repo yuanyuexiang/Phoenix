@@ -24,7 +24,7 @@ samples/    演示样例文档
 ```
 
 CI/CD:`.github/workflows/ci.yml`(push/PR 时 Go 构建测试 + gofmt 检查 + 前端构建);
-`deploy.yml`(打 `v*` 标签→构建推送 6 镜像→SSH compose 滚动更新)。生产用 `phoenix-phoenix`
+`deploy.yml`(打 `v*` 标签→构建推送 6 镜像→SSH compose 滚动更新)。生产用 `phoenix`
 前缀命名,避免与同服务器其他项目冲突;`deploy/docker-compose.traefik.yml` 是**另一个项目**
 的参考文件,不属于本项目部署链路。
 
