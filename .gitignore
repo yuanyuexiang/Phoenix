@@ -5,3 +5,8 @@
 .DS_Store
 __pycache__/
 *.pyc
+
+# 机密与本地参考文件,严禁入库
+ssh-key*
+/参考/
+deploy/docker-compose.traefik.yml

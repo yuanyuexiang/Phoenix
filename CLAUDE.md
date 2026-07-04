@@ -19,9 +19,14 @@ docs/       产品文档(说明书、WorkBuddy 接入指南)
 frontend/   前端管理后台 —— Next.js 16 + React 19 + Tailwind v4(TypeScript,无组件库)
 backend/    Go 后端,单一 go.mod,四个服务入口在 cmd/ 下
 ocr/        OCR 服务 —— Python FastAPI + PaddleOCR
-deploy/     docker-compose(9 容器)
+deploy/     docker-compose.yml(本机开发)/ docker-compose.prod.yml(生产,Traefik+预构建镜像)
 samples/    演示样例文档
 ```
+
+CI/CD:`.github/workflows/ci.yml`(push/PR 时 Go 构建测试 + gofmt 检查 + 前端构建);
+`deploy.yml`(打 `v*` 标签→构建推送 6 镜像→SSH compose 滚动更新)。生产用 `phoenix-dip`
+前缀命名,避免与同服务器其他项目冲突;`deploy/docker-compose.traefik.yml` 是**另一个项目**
+的参考文件,不属于本项目部署链路。
 
 前端设计:三层主题 token(raw palette → `@theme inline` 语义色 → 组件),
 `<html data-theme>` 驱动 light/dark,企业蓝调性;NavRail 左侧图标导航
