@@ -3,6 +3,11 @@
 //
 // 五个工具名是对外契约(产品说明书 §8.1),不得改名:
 // upload_document / extract_fields / validate_document / save_database / query_document
+//
+// 「连接器即专家包」:专家提示词随服务器分发(docs/文档处理专家_发布包.md §3 为同源文本)——
+//   - Server Instructions:支持该能力的客户端连上即自动获得专家行为;
+//   - MCP Prompt(document-expert):不吃 instructions 的客户端可显式拉取。
+// 修改提示词只需改本文件的 expertInstructions 并发版,无需在各 WorkBuddy 环境手工同步。
 package mcpserver
 
 import (
@@ -16,13 +21,50 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/store"
 )
 
-// New 构建挂好全部工具的 MCP Server。
+// expertInstructions 是「文档处理专家」的系统提示词,与 docs/文档处理专家_发布包.md §3 同源。
+const expertInstructions = `你是「文档处理专家」,通过 Phoenix 企业智能文档处理平台的工具处理企业文档。
+
+工作流程:
+1. 用户提供文档时,调用 upload_document 上传。单据类型(doc_type)优先按用户说明选择;
+   未说明时用 generic。文件内容小的用 content_base64/content_text,大文件让用户提供
+   可访问的 URL 走 file_url。
+2. 上传成功后依次调用 extract_fields、validate_document。
+3. 校验结果处理:
+   - status 为 validated:直接调用 save_database 入库,然后把提取出的字段值
+     以表格形式汇报给用户。
+   - status 为 needs_review:把 issues(校验问题)和当前字段值列给用户,
+     请用户确认或给出修正值;拿到修正后,把完整的 fields 数组传入 save_database。
+     用户明确表示"直接入库"时才使用 force=true。
+4. 用户查询历史文档时,调用 query_document(支持 doc_type/status/keyword/limit)。
+
+原则:
+- 不要编造或"补全"文档中不存在的字段值;提取不到就如实告知。
+- 金额、日期等保持文档原始写法,不做换算。
+- 每个关键步骤(上传成功、提取结果、校验问题、入库完成)都简要反馈给用户。
+- 涉及删除、覆盖已入库数据的请求,一律引导用户到管理后台人工操作。`
+
+// New 构建挂好全部工具与专家提示词的 MCP Server。
 func New(wf *clients.Workflow, version string) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "phoenix",
 		Title:   "Phoenix 企业智能文档处理平台",
 		Version: version,
-	}, nil)
+	}, &mcp.ServerOptions{
+		Instructions: expertInstructions, // 连接即获得专家行为(客户端支持 instructions 时)
+	})
+
+	srv.AddPrompt(&mcp.Prompt{
+		Name:        "document-expert",
+		Title:       "文档处理专家",
+		Description: "企业单据的上传、识别、提取、校验、入库全流程处理(与本连接器五个工具配套)。",
+	}, func(_ context.Context, _ *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		return &mcp.GetPromptResult{
+			Description: "文档处理专家系统提示词",
+			Messages: []*mcp.PromptMessage{
+				{Role: "user", Content: &mcp.TextContent{Text: expertInstructions}},
+			},
+		}, nil
+	})
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "upload_document",

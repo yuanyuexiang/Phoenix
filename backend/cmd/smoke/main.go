@@ -38,6 +38,24 @@ func main() {
 		fmt.Printf("  - %s\n", t.Name)
 	}
 
+	// 「连接器即专家包」验证:服务器应内嵌专家提示词(prompts + instructions)
+	prompts, err := session.ListPrompts(ctx, nil)
+	if err != nil {
+		log.Fatalf("prompts/list 失败: %v", err)
+	}
+	fmt.Println("== 内嵌专家(prompts)==")
+	for _, p := range prompts.Prompts {
+		fmt.Printf("  - %s(%s)\n", p.Name, p.Title)
+	}
+	got, err := session.GetPrompt(ctx, &mcp.GetPromptParams{Name: "document-expert"})
+	if err != nil {
+		log.Fatalf("prompts/get document-expert 失败: %v", err)
+	}
+	if len(got.Messages) == 0 {
+		log.Fatal("document-expert 提示词为空")
+	}
+	fmt.Println("  ✓ document-expert 提示词可获取")
+
 	content, err := os.ReadFile(*sample)
 	if err != nil {
 		log.Fatal(err)
