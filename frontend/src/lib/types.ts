@@ -56,6 +56,12 @@ export interface Component {
   error?: string;
 }
 
+/** 特殊单据类型(不在 doctypes 配置内)的展示名。 */
+export const DOCTYPE_SPECIAL: Record<string, string> = {
+  auto: "待识别",
+  unknown: "未识别",
+};
+
 export const STATUS_META: Record<string, { text: string; tone: "gray" | "blue" | "green" | "amber" | "red" }> = {
   uploaded: { text: "已上传", tone: "gray" },
   extracted: { text: "已提取", tone: "blue" },

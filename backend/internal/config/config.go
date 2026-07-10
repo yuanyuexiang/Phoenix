@@ -30,7 +30,8 @@ type Config struct {
 	LLMAPIKey   string
 	LLMModel    string
 
-	MinConfidence float64 // 低于该置信度转人工审核
+	MinConfidence   float64 // 字段置信度低于该值转人工审核
+	ClassifyMinConf float64 // 自动分类置信度低于该值走开放提取兜底
 
 	// AdminPassword 是管理后台 / workflow API 的访问密钥(请求头 X-Access-Key)。
 	// 置空则关闭鉴权(仅建议本机联调);mcp 服务用同一配置调用 workflow。
@@ -60,7 +61,8 @@ func Load() Config {
 		LLMAPIKey:   env("PHX_LLM_API_KEY", ""),
 		LLMModel:    env("PHX_LLM_MODEL", "deepseek-chat"),
 
-		MinConfidence: envFloat("PHX_MIN_CONFIDENCE", 0.8),
+		MinConfidence:   envFloat("PHX_MIN_CONFIDENCE", 0.8),
+		ClassifyMinConf: envFloat("PHX_CLASSIFY_MIN_CONF", 0.5),
 
 		AdminPassword: env("PHX_ADMIN_PASSWORD", "phoenix123"), // 默认密码,生产环境务必修改
 	}

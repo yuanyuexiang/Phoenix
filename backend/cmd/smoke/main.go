@@ -73,7 +73,22 @@ func main() {
 	call(ctx, session, "save_database", map[string]any{"document_id": id})
 	call(ctx, session, "query_document", map[string]any{"keyword": "采购项目", "limit": 5})
 
-	fmt.Println("\n✅ 五个工具全部调用成功,流水线端到端跑通")
+	// 自动分类:不传 doc_type,提取阶段应识别为 generic(样例含其全部字段标签)
+	upAuto := call(ctx, session, "upload_document", map[string]any{
+		"filename":     "auto-sample.txt",
+		"content_text": string(content),
+	})
+	autoID := upAuto["id"].(string)
+	if upAuto["doc_type"] != "auto" {
+		log.Fatalf("未指定类型时应为 auto,得到 %v", upAuto["doc_type"])
+	}
+	exAuto := call(ctx, session, "extract_fields", map[string]any{"document_id": autoID})
+	if exAuto["doc_type"] != "generic" {
+		log.Fatalf("自动分类应识别为 generic,得到 %v", exAuto["doc_type"])
+	}
+	fmt.Println("\n✅ 自动分类:auto → generic 识别正确")
+
+	fmt.Println("✅ 五个工具全部调用成功,流水线端到端跑通")
 }
 
 func call(ctx context.Context, s *mcp.ClientSession, tool string, args map[string]any) map[string]any {

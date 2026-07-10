@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import * as api from "@/lib/api";
 import type { Doc, DocType, Field } from "@/lib/types";
+import { DOCTYPE_SPECIAL } from "@/lib/types";
 import {
   btnCls,
   btnDangerCls,
@@ -114,6 +115,11 @@ function ReviewView() {
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <h2 className="text-base font-semibold text-ink-900">{current.filename}</h2>
               <StatusBadge status={current.status} />
+              <span className="text-xs text-ink-300">
+                {DOCTYPE_SPECIAL[current.doc_type] ??
+                  doctypes.find((t) => t.name === current.doc_type)?.title ??
+                  current.doc_type}
+              </span>
               <span className="text-xs text-ink-300">{current.created_at}</span>
             </div>
 

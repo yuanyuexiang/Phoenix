@@ -47,6 +47,76 @@ func (l *LLM) Extract(ctx context.Context, text string, dt *schema.DocType) ([]m
 	return parseFields(content, dt)
 }
 
+// ExtractOpen 开放提取:不套 schema,让模型抽取文档中实际存在的键值对。
+func (l *LLM) ExtractOpen(ctx context.Context, text string) ([]model.Field, error) {
+	prompt := fmt.Sprintf(`你是企业文档字段提取引擎。文档类型未知,请把正文中实际存在的关键信息以键值对形式全部提取出来。
+
+要求:
+- 只输出一个 JSON 对象,不要输出任何其他内容。
+- 顶层键 "fields" 是数组,每个元素形如 {"name": 键名(用文档中的原始叫法), "value": 值, "confidence": 0~1 的置信度}。
+- 只提取文档中真实存在的信息,不要编造;金额、日期保留原始写法。
+- 最多提取 %d 项,优先编号、名称、金额、日期、当事方等关键信息。
+
+文档正文:
+<<<
+%s
+>>>`, openMaxFields, text)
+
+	content, err := l.chat(ctx, prompt)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Fields []model.Field `json:"fields"`
+	}
+	if err := json.Unmarshal([]byte(stripFence(content)), &out); err != nil {
+		return nil, fmt.Errorf("llm: 无法解析开放提取输出: %w", err)
+	}
+	if len(out.Fields) > openMaxFields {
+		out.Fields = out.Fields[:openMaxFields]
+	}
+	return out.Fields, nil
+}
+
+// Classify 让模型在候选单据类型中判断文档归属。
+func (l *LLM) Classify(ctx context.Context, text string, candidates []Candidate) (string, float64, error) {
+	cands, err := json.MarshalIndent(candidates, "", "  ")
+	if err != nil {
+		return "", 0, err
+	}
+	prompt := fmt.Sprintf(`你是企业单据分类引擎。判断下面的文档属于候选类型中的哪一种。
+
+要求:
+- 只输出一个 JSON 对象:{"doc_type": 候选类型的 Name 值, "confidence": 0~1 的置信度}。
+- 必须从候选列表中选择;都不像时 doc_type 置为空字符串,confidence 置 0。
+
+候选类型:
+%s
+
+文档正文:
+<<<
+%s
+>>>`, cands, text)
+
+	content, err := l.chat(ctx, prompt)
+	if err != nil {
+		return "", 0, err
+	}
+	var out struct {
+		DocType    string  `json:"doc_type"`
+		Confidence float64 `json:"confidence"`
+	}
+	if err := json.Unmarshal([]byte(stripFence(content)), &out); err != nil {
+		return "", 0, fmt.Errorf("llm: 无法解析分类输出: %w", err)
+	}
+	for _, c := range candidates { // 只信任候选集内的答案
+		if c.Name == out.DocType {
+			return out.DocType, out.Confidence, nil
+		}
+	}
+	return "", 0, nil
+}
+
 func buildPrompt(text string, dt *schema.DocType) (string, error) {
 	specs, err := json.MarshalIndent(dt.Fields, "", "  ")
 	if err != nil {
@@ -133,17 +203,20 @@ func (l *LLM) chat(ctx context.Context, prompt string) (string, error) {
 	return cr.Choices[0].Message.Content, nil
 }
 
-func parseFields(content string, dt *schema.DocType) ([]model.Field, error) {
-	// 容忍模型把 JSON 包在 ```json ... ``` 里的情况。
+// stripFence 容忍模型把 JSON 包在 ```json ... ``` 里的情况。
+func stripFence(content string) string {
 	content = strings.TrimSpace(content)
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
+	return strings.TrimSpace(content)
+}
 
+func parseFields(content string, dt *schema.DocType) ([]model.Field, error) {
 	var out struct {
 		Fields []model.Field `json:"fields"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &out); err != nil {
+	if err := json.Unmarshal([]byte(stripFence(content)), &out); err != nil {
 		return nil, fmt.Errorf("llm: 无法解析模型输出: %w", err)
 	}
 

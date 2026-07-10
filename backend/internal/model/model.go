@@ -16,6 +16,14 @@ const (
 	StatusFailed      Status = "failed"       // 处理失败,详见 Error
 )
 
+// 特殊单据类型(不在 doctypes 配置内):
+//   - DocTypeAuto:上传时未指定类型,提取前先自动分类;
+//   - DocTypeUnknown:自动分类失败,已走开放提取,待人工确认类型。
+const (
+	DocTypeAuto    = "auto"
+	DocTypeUnknown = "unknown"
+)
+
 // Field 是从文档中提取出的一个字段。
 type Field struct {
 	Name       string  `json:"name"`

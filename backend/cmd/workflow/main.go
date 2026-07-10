@@ -51,13 +51,14 @@ func run() error {
 
 	handler := workflowapi.NewHandler(workflowapi.Options{
 		Pipeline: &pipeline.Pipeline{
-			DB:            db,
-			Objects:       objects,
-			OCR:           ocr.New(cfg.OCRBaseURL),
-			Parser:        clients.NewParser(cfg.ParserBaseURL),
-			AI:            clients.NewAI(cfg.AIBaseURL),
-			Registry:      registry,
-			MinConfidence: cfg.MinConfidence,
+			DB:              db,
+			Objects:         objects,
+			OCR:             ocr.New(cfg.OCRBaseURL),
+			Parser:          clients.NewParser(cfg.ParserBaseURL),
+			AI:              clients.NewAI(cfg.AIBaseURL),
+			Registry:        registry,
+			MinConfidence:   cfg.MinConfidence,
+			ClassifyMinConf: cfg.ClassifyMinConf,
 		},
 		Registry:      registry,
 		DB:            db,

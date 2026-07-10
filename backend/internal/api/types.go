@@ -52,10 +52,33 @@ type ParseResponse struct {
 
 // ExtractRequest 是 ai 服务 POST /extract 的请求体。
 // 字段定义随请求下发:单据类型配置归 workflow 管,ai 服务保持无状态。
+// Fields 为空 = 开放提取模式:不套 schema,抽取文档中实际存在的键值对。
 type ExtractRequest struct {
 	Text    string          `json:"text"`
 	DocType string          `json:"doc_type"`
-	Fields  []FieldSpecView `json:"fields"`
+	Fields  []FieldSpecView `json:"fields,omitempty"`
+}
+
+// DocTypeCandidate 是分类候选单据类型(Labels 为各字段中文标签)。
+type DocTypeCandidate struct {
+	Name        string   `json:"name"`
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	Labels      []string `json:"labels"`
+}
+
+// ClassifyRequest 是 ai 服务 POST /classify 的请求体。
+type ClassifyRequest struct {
+	Text       string             `json:"text"`
+	Candidates []DocTypeCandidate `json:"candidates"`
+}
+
+// ClassifyResponse 是 ai 服务 POST /classify 的响应体。
+// 无法判断时 DocType 为空、Confidence 为 0。
+type ClassifyResponse struct {
+	DocType    string  `json:"doc_type"`
+	Confidence float64 `json:"confidence"`
+	Classifier string  `json:"classifier"`
 }
 
 // FieldSpecView 是下发给 ai 服务的字段定义(internal/schema.FieldSpec 的传输形态)。

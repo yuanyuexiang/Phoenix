@@ -138,6 +138,14 @@ func (c *AI) Extract(ctx context.Context, req api.ExtractRequest) (api.ExtractRe
 	return out, nil
 }
 
+func (c *AI) Classify(ctx context.Context, req api.ClassifyRequest) (api.ClassifyResponse, error) {
+	out, err := postJSON[api.ClassifyRequest, api.ClassifyResponse](ctx, c.http, c.base+"/classify", req)
+	if err != nil {
+		return api.ClassifyResponse{}, fmt.Errorf("ai: %w", err)
+	}
+	return out, nil
+}
+
 // Workflow 是工作流引擎的客户端,MCP Server 等内部服务使用。
 // accessKey 非空时每个请求自动带上 X-Access-Key(workflow 开启鉴权时必需)。
 type Workflow struct {

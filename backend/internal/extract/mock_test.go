@@ -7,6 +7,41 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 )
 
+func TestMockClassify(t *testing.T) {
+	candidates := []Candidate{
+		{Name: "contract", Labels: []string{"编号", "甲方", "乙方"}},
+		{Name: "invoice", Labels: []string{"发票号码", "价税合计", "税额"}},
+	}
+	text := "编号: A-1\n甲方: 某公司\n乙方: 另一公司"
+
+	name, conf, err := Mock{}.Classify(context.Background(), text, candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "contract" || conf != 1.0 {
+		t.Fatalf("期望 contract/1.0,得到 %s/%v", name, conf)
+	}
+
+	name, conf, _ = Mock{}.Classify(context.Background(), "无关内容", candidates)
+	if name != "" || conf != 0 {
+		t.Fatalf("无匹配时应返回空,得到 %s/%v", name, conf)
+	}
+}
+
+func TestMockExtractOpen(t *testing.T) {
+	text := "报销确认单\n工号: E1024\n事由: 差旅\n工号: 重复键应忽略\n这是一行不含键值对的正文,不应被提取。"
+	fields, err := Mock{}.ExtractOpen(context.Background(), text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 2 {
+		t.Fatalf("期望 2 个字段(去重、忽略正文),得到 %d: %+v", len(fields), fields)
+	}
+	if fields[0].Name != "工号" || fields[0].Value != "E1024" {
+		t.Errorf("首个字段不符: %+v", fields[0])
+	}
+}
+
 func TestMockExtract(t *testing.T) {
 	dt := &schema.DocType{
 		Name: "test",

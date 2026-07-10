@@ -7,6 +7,7 @@
 // 「连接器即专家包」:专家提示词随服务器分发(docs/文档处理专家_发布包.md §3 为同源文本)——
 //   - Server Instructions:支持该能力的客户端连上即自动获得专家行为;
 //   - MCP Prompt(document-expert):不吃 instructions 的客户端可显式拉取。
+//
 // 修改提示词只需改本文件的 expertInstructions 并发版,无需在各 WorkBuddy 环境手工同步。
 package mcpserver
 
@@ -25,9 +26,9 @@ import (
 const expertInstructions = `你是「文档处理专家」,通过 Phoenix 企业智能文档处理平台的工具处理企业文档。
 
 工作流程:
-1. 用户提供文档时,调用 upload_document 上传。单据类型(doc_type)优先按用户说明选择;
-   未说明时用 generic。文件内容小的用 content_base64/content_text,大文件让用户提供
-   可访问的 URL 走 file_url。
+1. 用户提供文档时,调用 upload_document 上传。单据类型(doc_type)按用户说明选择;
+   用户未说明时不传该参数,平台会自动识别类型(识别不出会转人工审核定类型)。
+   文件内容小的用 content_base64/content_text,大文件让用户提供可访问的 URL 走 file_url。
 2. 上传成功后依次调用 extract_fields、validate_document。
 3. 校验结果处理:
    - status 为 validated:直接调用 save_database 入库,然后把提取出的字段值
@@ -120,7 +121,7 @@ func toResult(v api.DocumentView) docResult {
 }
 
 type uploadInput struct {
-	DocType       string `json:"doc_type" jsonschema:"单据类型,须与平台配置的 doctypes 一致"`
+	DocType       string `json:"doc_type,omitempty" jsonschema:"单据类型;不传或传 auto 时平台自动识别,识别失败会转人工审核"`
 	Filename      string `json:"filename" jsonschema:"文件名,含扩展名,平台按扩展名选择解析路径"`
 	ContentText   string `json:"content_text,omitempty" jsonschema:"纯文本内容,与 content_base64/file_url 三选一"`
 	ContentBase64 string `json:"content_base64,omitempty" jsonschema:"base64 编码的文件内容,仅适合小文件"`

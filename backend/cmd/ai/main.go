@@ -39,6 +39,9 @@ func main() {
 	mux.HandleFunc("POST /extract", func(w http.ResponseWriter, r *http.Request) {
 		handleExtract(w, r, extractor)
 	})
+	mux.HandleFunc("POST /classify", func(w http.ResponseWriter, r *http.Request) {
+		handleClassify(w, r, extractor)
+	})
 
 	if err := httpx.Serve(addr, mux, "ai 字段提取服务"); err != nil {
 		slog.Error("ai 服务退出", "error", err)
@@ -52,8 +55,19 @@ func handleExtract(w http.ResponseWriter, r *http.Request, extractor extract.Ext
 		writeError(w, http.StatusBadRequest, "请求体解析失败: "+err.Error())
 		return
 	}
-	if req.Text == "" || len(req.Fields) == 0 {
-		writeError(w, http.StatusBadRequest, "text 与 fields 均不能为空")
+	if req.Text == "" {
+		writeError(w, http.StatusBadRequest, "text 不能为空")
+		return
+	}
+
+	// Fields 为空 = 开放提取模式(类型识别失败的兜底,见 internal/extract)
+	if len(req.Fields) == 0 {
+		fields, err := extractor.ExtractOpen(r.Context(), req.Text)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, api.ExtractResponse{Extractor: extractor.Name() + ":open", Fields: fields})
 		return
 	}
 
@@ -72,8 +86,39 @@ func handleExtract(w http.ResponseWriter, r *http.Request, extractor extract.Ext
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	writeJSON(w, api.ExtractResponse{Extractor: extractor.Name(), Fields: fields})
+}
+
+func handleClassify(w http.ResponseWriter, r *http.Request, extractor extract.Extractor) {
+	var req api.ClassifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体解析失败: "+err.Error())
+		return
+	}
+	if req.Text == "" || len(req.Candidates) == 0 {
+		writeError(w, http.StatusBadRequest, "text 与 candidates 均不能为空")
+		return
+	}
+	candidates := make([]extract.Candidate, 0, len(req.Candidates))
+	for _, c := range req.Candidates {
+		candidates = append(candidates, extract.Candidate{
+			Name:        c.Name,
+			Title:       c.Title,
+			Description: c.Description,
+			Labels:      c.Labels,
+		})
+	}
+	docType, confidence, err := extractor.Classify(r.Context(), req.Text, candidates)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, api.ClassifyResponse{DocType: docType, Confidence: confidence, Classifier: extractor.Name()})
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(api.ExtractResponse{Extractor: extractor.Name(), Fields: fields})
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func writeError(w http.ResponseWriter, code int, msg string) {

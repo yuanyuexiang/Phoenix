@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import * as api from "@/lib/api";
 import type { Doc, DocType } from "@/lib/types";
-import { STATUS_META } from "@/lib/types";
+import { DOCTYPE_SPECIAL, STATUS_META } from "@/lib/types";
 import { btnCls, btnPrimaryCls, inputCls, PageHeader, StatusBadge, ToastProvider, useToast } from "@/components/ui";
 
 export default function DocumentsPage() {
@@ -23,7 +23,7 @@ function DocumentsView() {
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({ doc_type: "", status: "", keyword: "" });
   const [showUpload, setShowUpload] = useState(false);
-  const [upload, setUpload] = useState({ doc_type: "", filename: "test.txt", content: "" });
+  const [upload, setUpload] = useState({ doc_type: "auto", filename: "test.txt", content: "" });
 
   const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), false);
 
@@ -51,7 +51,6 @@ function DocumentsView() {
   }, [load]);
 
   const doUpload = async () => {
-    if (!upload.doc_type) return toast("请选择单据类型", false);
     if (!upload.content.trim()) return toast("请粘贴文本内容", false);
     try {
       const doc = await api.uploadDocument(upload.doc_type, upload.filename || "test.txt", upload.content);
@@ -63,7 +62,8 @@ function DocumentsView() {
     }
   };
 
-  const typeTitle = (name: string) => doctypes.find((t) => t.name === name)?.title ?? name;
+  const typeTitle = (name: string) =>
+    DOCTYPE_SPECIAL[name] ?? doctypes.find((t) => t.name === name)?.title ?? name;
 
   return (
     <>
@@ -86,7 +86,7 @@ function DocumentsView() {
                 value={upload.doc_type}
                 onChange={(e) => setUpload((u) => ({ ...u, doc_type: e.target.value }))}
               >
-                <option value="">选择单据类型</option>
+                <option value="auto">自动识别类型</option>
                 {doctypes.map((t) => (
                   <option key={t.name} value={t.name}>
                     {t.title} ({t.name})
