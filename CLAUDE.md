@@ -23,10 +23,10 @@ deploy/     docker-compose.yml(本机开发)/ docker-compose.prod.yml(生产,Tra
 samples/    演示样例文档
 ```
 
-CI/CD:`.github/workflows/ci.yml`(push/PR 时 Go 构建测试 + gofmt 检查 + 前端构建);
-`deploy.yml`(打 `v*` 标签→构建推送 6 镜像→SSH compose 滚动更新)。生产用 `phoenix`
-前缀命名,避免与同服务器其他项目冲突;`deploy/docker-compose.traefik.yml` 是**另一个项目**
-的参考文件,不属于本项目部署链路。
+CI/CD:单文件 `.github/workflows/ci.yml` —— push master 全流程(测试→构建推送 6 镜像→
+SSH 部署→健康检查,测试阶段策略);PR 只跑测试不部署。生产用 `phoenix` 前缀命名;
+`deploy/docker-compose.traefik.yml` 是**另一个项目**的参考文件,不属于本项目部署链路。
+正式运营后建议把部署改回 `v*` 标签触发(git 历史有拆分版 deploy.yml)。
 
 前端设计:三层主题 token(raw palette → `@theme inline` 语义色 → 组件),
 `<html data-theme>` 驱动 light/dark,企业蓝调性;NavRail 左侧图标导航

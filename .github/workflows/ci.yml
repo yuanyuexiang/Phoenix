@@ -1,10 +1,29 @@
-# CI:每次 push / PR 验证后端与前端可构建、测试通过。
-name: CI
+# CI/CD 一体化流水线(测试阶段策略):
+#   push master / 手动触发 → 测试 → 构建推送 6 镜像 → SSH 部署 → 健康检查
+#   pull_request           → 只跑测试,不构建不部署
+#
+# 转入正式运营后,建议把 build-push/deploy 的触发改回打 v* 标签(见 git 历史中的
+# 拆分版 deploy.yml),避免每次提交都动生产。
+#
+# 需要的 Secrets:REGISTRY_USERNAME / REGISTRY_PASSWORD(ACR)、
+#   DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY(服务器 SSH,key 为私钥全文)
+# 可选 Variables:REGISTRY、REGISTRY_NAMESPACE、DEPLOY_DIR(默认 /opt/phoenix)
+name: CI/CD
 
 on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
+
+# 连续提交时取消上一轮未完成的流水线,只部署最新代码
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ${{ vars.REGISTRY || 'registry.cn-hangzhou.aliyuncs.com' }}
+  NAMESPACE: ${{ vars.REGISTRY_NAMESPACE || 'yuanyuexiang' }}
 
 jobs:
   backend:
@@ -51,3 +70,102 @@ jobs:
         run: npm run build
         env:
           BUILD_STATIC: "1"
+
+  build-push:
+    name: 构建推送 ${{ matrix.name }}
+    if: github.event_name != 'pull_request'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Go 四服务共用 backend/Dockerfile,SERVICE 参数区分
+          - { name: workflow, context: backend, build_args: "SERVICE=workflow" }
+          - { name: parser, context: backend, build_args: "SERVICE=parser" }
+          - { name: ai, context: backend, build_args: "SERVICE=ai" }
+          - { name: mcp, context: backend, build_args: "SERVICE=mcp" }
+          - { name: admin, context: frontend, build_args: "" }
+          - { name: ocr, context: ocr, build_args: "" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 计算镜像标签
+        id: meta
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: 构建并推送
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          build-args: ${{ matrix.build_args }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/phoenix-${{ matrix.name }}:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/phoenix-${{ matrix.name }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  deploy:
+    name: SSH 部署
+    if: github.event_name != 'pull_request'
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 计算镜像标签
+        id: meta
+        run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: 同步 compose 文件到服务器
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: deploy/docker-compose.prod.yml
+          target: ${{ vars.DEPLOY_DIR || '/opt/phoenix' }}
+          strip_components: 1
+
+      - name: 拉取镜像并滚动更新
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            cd ${{ vars.DEPLOY_DIR || '/opt/phoenix' }}
+            test -f .env || { echo "缺少 .env(参考仓库 deploy/.env.prod.example)"; exit 1; }
+            echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ env.REGISTRY }} -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
+            export TAG=${{ steps.meta.outputs.tag }}
+            docker compose -f docker-compose.prod.yml pull
+            # 不加 --remove-orphans:项目名 phoenix 若与服务器上历史栈重名,避免误删其容器
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+            echo "部署完成:TAG=$TAG"
+
+      - name: 部署后健康检查
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            sleep 10
+            for c in phoenix-workflow phoenix-mcp phoenix-admin; do
+              STATE=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo missing)
+              echo "$c: $STATE"
+              [ "$STATE" = "running" ] || exit 1
+            done
