@@ -119,6 +119,12 @@ services:
       TZ: Asia/Shanghai
       PHX_WORKFLOW_URL: http://workflow:8081
       PHX_ADMIN_PASSWORD: ${PHX_ADMIN_PASSWORD} # 内部调用 workflow 的凭证
+      # MCP 端点 OAuth 鉴权(docs/MCP-OAuth鉴权方案.md;AS 选型拍板后在 .env 配置,
+      # 先 optional 灰度观察再切 required)
+      PHX_OAUTH_MODE: ${PHX_OAUTH_MODE:-off}
+      PHX_OAUTH_ISSUER: ${PHX_OAUTH_ISSUER:-}
+      PHX_OAUTH_AUDIENCE: ${PHX_OAUTH_AUDIENCE:-phoenix-mcp}
+      PHX_OAUTH_RESOURCE: ${PHX_OAUTH_RESOURCE:-https://phoenix.matrix-net.tech/mcp}
     networks: [internal, matrix-network]
     labels:
       - "traefik.enable=true"
@@ -129,6 +135,13 @@ services:
       - "traefik.http.services.phoenix-mcp.loadbalancer.server.port=8080"
       - "traefik.http.routers.phoenix-mcp.tls=true"
       - "traefik.http.routers.phoenix-mcp.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
+      # RFC 9728 资源元数据路径不在 /mcp 前缀内,需单独路由到本服务
+      # (OAuth 客户端从 401 的 WWW-Authenticate 发现该端点)
+      - "traefik.http.routers.phoenix-mcp-oauth-meta.rule=Host(`phoenix.matrix-net.tech`) && PathPrefix(`/.well-known/oauth-protected-resource`)"
+      - "traefik.http.routers.phoenix-mcp-oauth-meta.entrypoints=websecure"
+      - "traefik.http.routers.phoenix-mcp-oauth-meta.service=phoenix-mcp"
+      - "traefik.http.routers.phoenix-mcp-oauth-meta.tls=true"
+      - "traefik.http.routers.phoenix-mcp-oauth-meta.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
 
   admin: # 前端管理后台(nginx 托管 SPA 并反代 /api 到 workflow),域名主入口
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-admin:${TAG:-latest}

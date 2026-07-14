@@ -36,6 +36,15 @@ type Config struct {
 	// AdminPassword 是管理后台 / workflow API 的访问密钥(请求头 X-Access-Key)。
 	// 置空则关闭鉴权(仅建议本机联调);mcp 服务用同一配置调用 workflow。
 	AdminPassword string
+
+	// MCP 端点 OAuth 2.1 鉴权(mcp 服务专用,docs/MCP-OAuth鉴权方案.md)。
+	// Mode 为 off(默认)时完全不启用,以下其余项不生效。
+	OAuthMode         string // off | optional(有 token 记身份、无 token 放行,灰度用)| required
+	OAuthIssuer       string // 期望的 iss claim,如 https://kc.example.com/realms/phoenix
+	OAuthDiscoveryURL string // 实际拉取 OIDC discovery/JWKS 的地址;空 = Issuer(容器内网地址与 iss 不同时才需设置)
+	OAuthAudience     string // 期望的 aud claim(本资源在授权服务器侧的标识)
+	OAuthResource     string // RFC 9728 资源标识 = MCP 端点对外 URL
+	OAuthScopes       string // 空格分隔的必需 scope,空 = 不检查
 }
 
 func Load() Config {
@@ -65,6 +74,13 @@ func Load() Config {
 		ClassifyMinConf: envFloat("PHX_CLASSIFY_MIN_CONF", 0.5),
 
 		AdminPassword: env("PHX_ADMIN_PASSWORD", "phoenix123"), // 默认密码,生产环境务必修改
+
+		OAuthMode:         env("PHX_OAUTH_MODE", "off"),
+		OAuthIssuer:       env("PHX_OAUTH_ISSUER", ""),
+		OAuthDiscoveryURL: env("PHX_OAUTH_DISCOVERY_URL", ""),
+		OAuthAudience:     env("PHX_OAUTH_AUDIENCE", "phoenix-mcp"),
+		OAuthResource:     env("PHX_OAUTH_RESOURCE", "http://localhost:8080/mcp"),
+		OAuthScopes:       env("PHX_OAUTH_SCOPES", ""),
 	}
 }
 

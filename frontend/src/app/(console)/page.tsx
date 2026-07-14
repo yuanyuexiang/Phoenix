@@ -159,6 +159,7 @@ function DocumentsView() {
                 <th className="px-4 py-2.5 font-medium">文件名</th>
                 <th className="px-4 py-2.5 font-medium">类型</th>
                 <th className="px-4 py-2.5 font-medium">状态</th>
+                <th className="px-4 py-2.5 font-medium">操作人</th>
                 <th className="px-4 py-2.5 font-medium">创建时间</th>
                 <th className="px-4 py-2.5" />
               </tr>
@@ -166,7 +167,7 @@ function DocumentsView() {
             <tbody>
               {docs.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-ink-300">
+                  <td colSpan={6} className="px-4 py-10 text-center text-ink-300">
                     {loading ? "加载中…" : "暂无文档"}
                   </td>
                 </tr>
@@ -178,6 +179,7 @@ function DocumentsView() {
                   <td className="px-4 py-2.5">
                     <StatusBadge status={d.status} />
                   </td>
+                  <td className="px-4 py-2.5 text-ink-500">{d.uploaded_by || "—"}</td>
                   <td className="px-4 py-2.5 text-xs text-ink-300">{d.created_at}</td>
                   <td className="px-4 py-2.5 text-right">
                     <Link

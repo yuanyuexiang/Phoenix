@@ -81,9 +81,9 @@ func (db *DB) CreateDocument(ctx context.Context, d *model.Document) error {
 		return err
 	}
 	_, err = db.pool.Exec(ctx, `
-		INSERT INTO documents (id, doc_type, filename, object_key, content_text, status, error, fields, issues)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		d.ID, d.DocType, d.Filename, d.ObjectKey, d.Text, d.Status, d.Error, fields, issues)
+		INSERT INTO documents (id, doc_type, filename, object_key, content_text, status, error, fields, issues, uploaded_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		d.ID, d.DocType, d.Filename, d.ObjectKey, d.Text, d.Status, d.Error, fields, issues, d.UploadedBy)
 	return err
 }
 
@@ -95,26 +95,27 @@ func (db *DB) UpdateDocument(ctx context.Context, d *model.Document) error {
 	}
 	_, err = db.pool.Exec(ctx, `
 		UPDATE documents
-		SET content_text = $2, status = $3, error = $4, fields = $5, issues = $6, updated_at = now()
+		SET content_text = $2, status = $3, error = $4, fields = $5, issues = $6, reviewed_by = $7, updated_at = now()
 		WHERE id = $1`,
-		d.ID, d.Text, d.Status, d.Error, fields, issues)
+		d.ID, d.Text, d.Status, d.Error, fields, issues, d.ReviewedBy)
 	return err
 }
 
 // GetDocument 按 ID 取文档;不存在时返回 pgx.ErrNoRows。
 func (db *DB) GetDocument(ctx context.Context, id string) (*model.Document, error) {
 	row := db.pool.QueryRow(ctx, `
-		SELECT id, doc_type, filename, object_key, content_text, status, error, fields, issues, created_at, updated_at
+		SELECT id, doc_type, filename, object_key, content_text, status, error, fields, issues, uploaded_by, reviewed_by, created_at, updated_at
 		FROM documents WHERE id = $1`, id)
 	return scanDocument(row)
 }
 
 // QueryFilter 是 query_document 的查询条件,零值字段不参与过滤。
 type QueryFilter struct {
-	DocType string
-	Status  string
-	Keyword string // 匹配文件名或正文
-	Limit   int
+	DocType    string
+	Status     string
+	Keyword    string // 匹配文件名或正文
+	UploadedBy string // 按上传人精确匹配
+	Limit      int
 }
 
 // QueryDocuments 按条件查询,按创建时间倒序。
@@ -134,6 +135,9 @@ func (db *DB) QueryDocuments(ctx context.Context, f QueryFilter) ([]*model.Docum
 	if f.Keyword != "" {
 		add("(filename ILIKE $%d OR content_text ILIKE $%[1]d)", "%"+f.Keyword+"%")
 	}
+	if f.UploadedBy != "" {
+		add("uploaded_by = $%d", f.UploadedBy)
+	}
 	where := ""
 	if len(conds) > 0 {
 		where = "WHERE " + strings.Join(conds, " AND ")
@@ -145,7 +149,7 @@ func (db *DB) QueryDocuments(ctx context.Context, f QueryFilter) ([]*model.Docum
 	args = append(args, limit)
 
 	rows, err := db.pool.Query(ctx, fmt.Sprintf(`
-		SELECT id, doc_type, filename, object_key, content_text, status, error, fields, issues, created_at, updated_at
+		SELECT id, doc_type, filename, object_key, content_text, status, error, fields, issues, uploaded_by, reviewed_by, created_at, updated_at
 		FROM documents %s ORDER BY created_at DESC LIMIT $%d`, where, len(args)), args...)
 	if err != nil {
 		return nil, err
@@ -161,6 +165,35 @@ func (db *DB) QueryDocuments(ctx context.Context, f QueryFilter) ([]*model.Docum
 		docs = append(docs, d)
 	}
 	return docs, rows.Err()
+}
+
+// AuditEntry 是一条审计日志(谁在何时对哪份文档做了什么)。
+type AuditEntry struct {
+	Actor       string         // 展示口径,同 documents.uploaded_by;可为空(匿名)
+	ActorSource string         // oauth | admin | anonymous
+	Action      string         // upload | extract | validate | save
+	DocumentID  string         // 可为空(动作未产生文档时)
+	Detail      map[string]any // 全量身份 claims 及动作参数,兜底可回溯
+}
+
+// InsertAudit 写入审计日志。调用方应视其为尽力而为:失败只告警,不阻断主流程。
+func (db *DB) InsertAudit(ctx context.Context, e AuditEntry) error {
+	detail, err := json.Marshal(e.Detail)
+	if err != nil {
+		return err
+	}
+	if e.Detail == nil {
+		detail = []byte("{}")
+	}
+	var docID any
+	if e.DocumentID != "" {
+		docID = e.DocumentID
+	}
+	_, err = db.pool.Exec(ctx, `
+		INSERT INTO audit_log (actor, actor_source, action, document_id, detail)
+		VALUES ($1, $2, $3, $4, $5)`,
+		e.Actor, e.ActorSource, e.Action, docID, detail)
+	return err
 }
 
 func marshalJSON(d *model.Document) (fields, issues []byte, err error) {
@@ -191,7 +224,7 @@ func scanDocument(row pgx.Row) (*model.Document, error) {
 	var d model.Document
 	var fields, issues []byte
 	err := row.Scan(&d.ID, &d.DocType, &d.Filename, &d.ObjectKey, &d.Text, &d.Status, &d.Error,
-		&fields, &issues, &d.CreatedAt, &d.UpdatedAt)
+		&fields, &issues, &d.UploadedBy, &d.ReviewedBy, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}

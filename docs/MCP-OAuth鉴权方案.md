@@ -1,6 +1,16 @@
 # Phoenix MCP 端点 OAuth 2.1 鉴权与用户识别方案
 
-> 状态:**待客户确认**  |  版本 V1.0  |  日期 2026-07-05
+> 状态:**实施中(平台侧已落地,AS 选型与 WorkBuddy 能力确认仍待客户)**  |  版本 V1.1  |  日期 2026-07-14
+>
+> 平台侧实现说明(§4 已全部落地):
+> - 鉴权开关为三档 `PHX_OAUTH_MODE=off|optional|required`(默认 off,零行为变化;
+>   optional 即 §7 灰度模式:有 token 记身份、无 token 放行);
+> - 配套配置:`PHX_OAUTH_ISSUER`(期望 iss)、`PHX_OAUTH_AUDIENCE`(默认 `phoenix-mcp`)、
+>   `PHX_OAUTH_RESOURCE`(资源标识,生产 `https://phoenix.matrix-net.tech/mcp`)、
+>   `PHX_OAUTH_DISCOVERY_URL`(容器内取 JWKS 的内网地址,与 iss 不同时才需设)、
+>   `PHX_OAUTH_SCOPES`(必需 scope,空=不检查);
+> - 开发联调:`make oauth-up` 起 Keycloak(localhost:8180,测试用户 alice/bob),
+>   `make smoke-oauth` 跑带 token 的端到端冒烟(含无 token 401 负向断言与身份落库断言)。
 > 解决两个问题:① 企业多员工经 WorkBuddy 使用「文档处理专家」时,平台识别到**人**;
 > ② MCP 端点(`https://phoenix.matrix-net.tech/mcp`)当前无鉴权,补上标准防护。
 > 本方案采用 **MCP 官方授权规范**(OAuth 2.1),是协议标准做法,同类项目可复用。

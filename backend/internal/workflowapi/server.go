@@ -5,7 +5,7 @@
 //	POST /api/documents/{id}/extract   OCR/解析 + AI 字段提取
 //	POST /api/documents/{id}/validate  规则校验
 //	POST /api/documents/{id}/save      确认入库(可带人工修正 fields / force)
-//	GET  /api/documents                查询(doc_type/status/keyword/limit)
+//	GET  /api/documents                查询(doc_type/status/keyword/uploaded_by/limit)
 //	GET  /api/doctypes                 单据类型配置(管理后台用)
 //	GET  /api/status                   组件健康聚合(服务状态页用)
 //	GET  /api/auth/status|check        鉴权探测(开放)
@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
+	"github.com/yuanyuexiang/phoenix/internal/identity"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
@@ -115,6 +116,43 @@ func authMiddleware(password string, next http.Handler) http.Handler {
 	})
 }
 
+/* ---------- 操作人与审计 ---------- */
+
+// operatorOf 解析当前请求的操作人。优先级:
+//  1. X-Phx-User-* 身份头(mcp 服务从 OAuth token 透传)→ actor 为身份展示口径,source=oauth;
+//  2. 无身份头但 X-Phx-Source=mcp(OAuth off/optional 且调用方未带 token)→ actor 空,source=anonymous;
+//  3. 其余(管理后台/脚本,共享密码无法区分到人)→ actor='admin',source=admin。
+//
+// 身份头只是传输载体:请求已过 authMiddleware(X-Access-Key)才会到这里,
+// 头的内容才可信。注意 PHX_ADMIN_PASSWORD 置空(鉴权关闭)时身份可被伪造,
+// 这与现状"关闭鉴权仅限本机联调"的约束一致。
+// TODO: 管理后台接入个人登录后,'admin' 应替换为真实用户。
+func operatorOf(r *http.Request) (actor, source string, u identity.User) {
+	if u, ok := identity.FromHeaders(r.Header); ok {
+		return u.Display(), "oauth", u
+	}
+	if r.Header.Get(identity.HeaderSource) == "mcp" {
+		return "", "anonymous", identity.User{}
+	}
+	return "admin", "admin", identity.User{}
+}
+
+// audit 记录一条审计日志;失败仅告警,不阻断业务。
+func (s *server) audit(r *http.Request, action, docID string, extra map[string]any) {
+	actor, source, u := operatorOf(r)
+	detail := map[string]any{}
+	if !u.IsZero() {
+		detail["sub"], detail["username"], detail["email"] = u.Sub, u.Username, u.Email
+	}
+	for k, v := range extra {
+		detail[k] = v
+	}
+	e := store.AuditEntry{Actor: actor, ActorSource: source, Action: action, DocumentID: docID, Detail: detail}
+	if err := s.opts.DB.InsertAudit(r.Context(), e); err != nil {
+		slog.Warn("审计日志写入失败", "action", action, "document_id", docID, "error", err)
+	}
+}
+
 /* ---------- 文档处理 ---------- */
 
 func (s *server) upload(w http.ResponseWriter, r *http.Request) {
@@ -128,11 +166,13 @@ func (s *server) upload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	doc, err := s.opts.Pipeline.Upload(r.Context(), req.DocType, req.Filename, data)
+	actor, _, _ := operatorOf(r)
+	doc, err := s.opts.Pipeline.Upload(r.Context(), req.DocType, req.Filename, data, actor)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	s.audit(r, "upload", doc.ID, map[string]any{"doc_type": doc.DocType, "filename": doc.Filename})
 	writeJSON(w, api.ToView(doc))
 }
 
@@ -142,6 +182,7 @@ func (s *server) extract(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	s.audit(r, "extract", doc.ID, nil)
 	writeJSON(w, api.ToView(doc))
 }
 
@@ -151,6 +192,7 @@ func (s *server) validate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	s.audit(r, "validate", doc.ID, nil)
 	writeJSON(w, api.ToView(doc))
 }
 
@@ -160,11 +202,13 @@ func (s *server) save(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请求体解析失败: "+err.Error())
 		return
 	}
-	doc, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.Force)
+	actor, _, _ := operatorOf(r)
+	doc, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.Force, actor)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	s.audit(r, "save", doc.ID, map[string]any{"force": req.Force, "fields_overridden": len(req.Fields) > 0})
 	writeJSON(w, api.ToView(doc))
 }
 
@@ -172,10 +216,11 @@ func (s *server) query(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	docs, err := s.opts.Pipeline.Query(r.Context(), store.QueryFilter{
-		DocType: q.Get("doc_type"),
-		Status:  q.Get("status"),
-		Keyword: q.Get("keyword"),
-		Limit:   limit,
+		DocType:    q.Get("doc_type"),
+		Status:     q.Get("status"),
+		Keyword:    q.Get("keyword"),
+		UploadedBy: q.Get("uploaded_by"),
+		Limit:      limit,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())

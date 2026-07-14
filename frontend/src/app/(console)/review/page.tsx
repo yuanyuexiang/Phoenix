@@ -120,6 +120,8 @@ function ReviewView() {
                   doctypes.find((t) => t.name === current.doc_type)?.title ??
                   current.doc_type}
               </span>
+              {current.uploaded_by && <span className="text-xs text-ink-300">上传:{current.uploaded_by}</span>}
+              {current.reviewed_by && <span className="text-xs text-ink-300">入库:{current.reviewed_by}</span>}
               <span className="text-xs text-ink-300">{current.created_at}</span>
             </div>
 

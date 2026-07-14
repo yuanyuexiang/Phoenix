@@ -37,6 +37,20 @@ run-all:
 smoke:
 	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt
 
+# ---- MCP OAuth 联调(docs/MCP-OAuth鉴权方案.md)----
+.PHONY: oauth-up oauth-down smoke-oauth
+oauth-up: # 开发用 Keycloak(realm/客户端/测试用户 alice、bob 自动导入,http://localhost:8180)
+	docker compose -f deploy/docker-compose.yml --profile oauth up -d keycloak
+
+oauth-down:
+	docker compose -f deploy/docker-compose.yml --profile oauth stop keycloak
+
+# OAuth 冒烟:mcp 须以 PHX_OAUTH_MODE=required(或 optional)启动;
+# 先负向验证无 token 被拒,再用 alice 的 token 跑全流程并断言 uploaded_by
+smoke-oauth:
+	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt \
+		-oauth-issuer http://localhost:8180/realms/phoenix -oauth-user alice -oauth-pass alice123 -require-auth
+
 # ---- 前端(frontend/,Next.js)----
 .PHONY: fe-install fe-dev fe-build
 fe-install:

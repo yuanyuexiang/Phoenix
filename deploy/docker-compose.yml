@@ -101,8 +101,35 @@ services:
     environment:
       PHX_WORKFLOW_URL: http://workflow:8081
       PHX_ADMIN_PASSWORD: phoenix123 # 与 workflow 一致,内部调用凭证
+      # OAuth 联调(先 make oauth-up 起 Keycloak,再解开以下注释重建 mcp):
+      # PHX_OAUTH_MODE: optional            # 灰度:有 token 记身份、无 token 放行;强制改 required
+      # PHX_OAUTH_ISSUER: http://localhost:8180/realms/phoenix       # token 的 iss,与 KC_HOSTNAME 一致
+      # PHX_OAUTH_DISCOVERY_URL: http://keycloak:8080/realms/phoenix # 容器内实际取 discovery/JWKS 的地址
+      # PHX_OAUTH_AUDIENCE: phoenix-mcp
+      # PHX_OAUTH_RESOURCE: http://localhost:8080/mcp
     ports:
       - "8080:8080"
+
+  keycloak: # 开发用授权服务器(OAuth 联调,make oauth-up 启动;生产 AS 选型未拍板,不进生产 compose)
+    image: quay.io/keycloak/keycloak:26.5
+    profiles: ["oauth"] # 默认 compose-up 不启动,零影响
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      # 固定 issuer 为宿主机地址:客户端从宿主机取 token,容器内 mcp 经
+      # PHX_OAUTH_DISCOVERY_URL 走内网取 JWKS,iss 校验仍按此 URL
+      KC_HOSTNAME: http://localhost:8180
+    ports:
+      - "8180:8080" # 避开项目端口约定(8080-8084/8001/5433/9100/9101/6380)与他项目占用
+    volumes:
+      - ./keycloak/phoenix-realm.json:/opt/keycloak/data/import/phoenix-realm.json:ro
+    healthcheck: # 健康端点在管理口 9000(容器内);镜像无 curl,用 bash /dev/tcp
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   admin: # 前端管理后台(React + Ant Design,nginx 托管并反代 /api 到 workflow)
     build: ../frontend

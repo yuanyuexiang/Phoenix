@@ -7,7 +7,8 @@
 ## 1. 前置条件
 
 **生产环境**(已部署):MCP 端点 `https://phoenix.matrix-net.tech/mcp`
-(传输协议 **Streamable HTTP**;⚠️ 端点自身尚未启用鉴权,对外发布专家前必须补上,见 §5)。
+(传输协议 **Streamable HTTP**;平台已支持 OAuth 2.1 鉴权,生产由 `PHX_OAUTH_MODE`
+控制,⚠️ 当前默认 off,对外发布专家前必须开启,见 §5 与 `docs/MCP-OAuth鉴权方案.md`)。
 
 **本机开发环境**:
 
@@ -130,7 +131,9 @@ make run-all      # 4 个 Go 服务
 
 ## 5. 生产部署前的待办(与说明书 §14 对应)
 
-- [ ] MCP 端点鉴权方式(API Key / OAuth,以 WorkBuddy 支持为准)【待确认】
+- [x] ~~MCP 端点鉴权方式~~ 平台侧 OAuth 2.1 资源服务器已实现(`docs/MCP-OAuth鉴权方案.md`,
+      三档开关 `PHX_OAUTH_MODE`,当前生产为 off);仍待:AS 选型拍板(方案 §3)、
+      WorkBuddy 对方案 §5 四项能力的书面确认(不支持则降级静态 token,方案 §6)【待确认】
 - [ ] WorkBuddy 是否支持 MCP sampling(决定 AI 模型能否复用 WorkBuddy 侧)【待确认】
 - [ ] 大文件上传通道:file_url 的来源约定(WorkBuddy 文件存储 or MinIO 预签名)【待确认】
 - [ ] 耗时文档的异步语义(任务 ID + 轮询)——当前为同步调用,大图/长文档会阻塞

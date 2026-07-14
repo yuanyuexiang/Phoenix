@@ -40,15 +40,17 @@ type ValidationIssue struct {
 
 // Document 是一份被处理的文档及其全部处理结果。
 type Document struct {
-	ID        string            `json:"id"`
-	DocType   string            `json:"doc_type"`
-	Filename  string            `json:"filename"`
-	ObjectKey string            `json:"object_key"` // MinIO 中的归档位置
-	Text      string            `json:"-"`          // OCR/解析后的正文,查询结果默认不回传
-	Status    Status            `json:"status"`
-	Error     string            `json:"error,omitempty"`
-	Fields    []Field           `json:"fields"`
-	Issues    []ValidationIssue `json:"issues"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	ID         string            `json:"id"`
+	DocType    string            `json:"doc_type"`
+	Filename   string            `json:"filename"`
+	ObjectKey  string            `json:"object_key"` // MinIO 中的归档位置
+	Text       string            `json:"-"`          // OCR/解析后的正文,查询结果默认不回传
+	Status     Status            `json:"status"`
+	Error      string            `json:"error,omitempty"`
+	Fields     []Field           `json:"fields"`
+	Issues     []ValidationIssue `json:"issues"`
+	UploadedBy string            `json:"uploaded_by,omitempty"` // 上传人(OAuth 身份展示口径,或 'admin')
+	ReviewedBy string            `json:"reviewed_by,omitempty"` // 入库确认人
+	CreatedAt  time.Time         `json:"created_at"`
+	UpdatedAt  time.Time         `json:"updated_at"`
 }

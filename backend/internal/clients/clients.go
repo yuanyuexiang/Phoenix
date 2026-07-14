@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
+	"github.com/yuanyuexiang/phoenix/internal/identity"
 	"github.com/yuanyuexiang/phoenix/internal/store"
 )
 
@@ -165,12 +166,26 @@ func (t accessKeyTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	return t.base.RoundTrip(req)
 }
 
+// identityTransport 标记请求来源为 mcp,并把 ctx 中的 OAuth 身份(工具 handler 经
+// identity.WithUser 注入)透传给 workflow(X-Phx-User-* 头,见 workflowapi.operatorOf)。
+type identityTransport struct {
+	base http.RoundTripper
+}
+
+func (t identityTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set(identity.HeaderSource, "mcp")
+	if u, ok := identity.FromContext(req.Context()); ok {
+		identity.SetHeaders(req.Header, u)
+	}
+	return t.base.RoundTrip(req)
+}
+
 func NewWorkflow(baseURL, accessKey string) *Workflow {
 	return &Workflow{
 		base: strings.TrimRight(baseURL, "/"),
 		http: &http.Client{
 			Timeout:   5 * time.Minute,
-			Transport: accessKeyTransport{key: accessKey, base: http.DefaultTransport},
+			Transport: identityTransport{base: accessKeyTransport{key: accessKey, base: http.DefaultTransport}},
 		},
 	}
 }
@@ -201,6 +216,9 @@ func (c *Workflow) Query(ctx context.Context, f store.QueryFilter) (api.QueryRes
 	}
 	if f.Keyword != "" {
 		q.Set("keyword", f.Keyword)
+	}
+	if f.UploadedBy != "" {
+		q.Set("uploaded_by", f.UploadedBy)
 	}
 	if f.Limit > 0 {
 		q.Set("limit", strconv.Itoa(f.Limit))

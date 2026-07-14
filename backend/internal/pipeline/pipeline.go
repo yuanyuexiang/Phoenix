@@ -39,7 +39,8 @@ type Pipeline struct {
 
 // Upload 实现 upload_document:归档原始文件到 MinIO 并登记任务。
 // docType 为空或 "auto" 时按待自动分类处理(提取阶段识别类型)。
-func (p *Pipeline) Upload(ctx context.Context, docType, filename string, data []byte) (*model.Document, error) {
+// uploadedBy 是操作人展示口径(可为空),由 API 层从请求头解析(workflowapi.operatorOf)。
+func (p *Pipeline) Upload(ctx context.Context, docType, filename string, data []byte, uploadedBy string) (*model.Document, error) {
 	if docType == "" {
 		docType = model.DocTypeAuto
 	}
@@ -59,11 +60,12 @@ func (p *Pipeline) Upload(ctx context.Context, docType, filename string, data []
 	}
 
 	doc := &model.Document{
-		ID:        id,
-		DocType:   docType,
-		Filename:  filename,
-		ObjectKey: key,
-		Status:    model.StatusUploaded,
+		ID:         id,
+		DocType:    docType,
+		Filename:   filename,
+		ObjectKey:  key,
+		Status:     model.StatusUploaded,
+		UploadedBy: uploadedBy,
 	}
 	if err := p.DB.CreateDocument(ctx, doc); err != nil {
 		return nil, fmt.Errorf("登记文档失败: %w", err)
@@ -214,7 +216,8 @@ func (p *Pipeline) Validate(ctx context.Context, id string) (*model.Document, er
 
 // Save 实现 save_database:确认入库。
 // fields 非空时以其为准(人工审核修正后的值),并要求先通过校验或显式覆盖。
-func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, force bool) (*model.Document, error) {
+// reviewedBy 记为「入库确认人」(幂等分支不覆盖已有值)。
+func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, force bool, reviewedBy string) (*model.Document, error) {
 	doc, err := p.DB.GetDocument(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("文档 %s 不存在", id)
@@ -237,6 +240,7 @@ func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, fo
 
 	doc.Status = model.StatusSaved
 	doc.Error = ""
+	doc.ReviewedBy = reviewedBy
 	if err := p.DB.UpdateDocument(ctx, doc); err != nil {
 		return nil, err
 	}

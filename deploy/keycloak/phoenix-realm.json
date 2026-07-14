@@ -1,0 +1,75 @@
+{
+  "realm": "phoenix",
+  "enabled": true,
+  "displayName": "Phoenix 开发联调",
+  "clients": [
+    {
+      "clientId": "workbuddy",
+      "name": "WorkBuddy / MCP Inspector(授权码 + PKCE)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "protocolMappers": [
+        {
+          "name": "phoenix-mcp-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "phoenix-mcp",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "phoenix-smoke",
+      "name": "冒烟客户端(Direct Access Grant,非交互取 token)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
+      "protocolMappers": [
+        {
+          "name": "phoenix-mcp-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "phoenix-mcp",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@phoenix.local",
+      "emailVerified": true,
+      "firstName": "爱丽丝",
+      "lastName": "测试",
+      "credentials": [{ "type": "password", "value": "alice123", "temporary": false }]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@phoenix.local",
+      "emailVerified": true,
+      "firstName": "鲍勃",
+      "lastName": "测试",
+      "credentials": [{ "type": "password", "value": "bob123", "temporary": false }]
+    }
+  ]
+}

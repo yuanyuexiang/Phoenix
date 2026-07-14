@@ -20,6 +20,8 @@ export interface Doc {
   error?: string;
   fields?: Field[];
   issues?: Issue[];
+  uploaded_by?: string;
+  reviewed_by?: string;
   created_at?: string;
 }
 

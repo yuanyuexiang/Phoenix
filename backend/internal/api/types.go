@@ -29,14 +29,16 @@ type SaveRequest struct {
 
 // DocumentView 是对外(MCP/管理后台)统一的文档视图。
 type DocumentView struct {
-	ID        string                  `json:"id"`
-	DocType   string                  `json:"doc_type"`
-	Filename  string                  `json:"filename"`
-	Status    string                  `json:"status"`
-	Error     string                  `json:"error,omitempty"`
-	Fields    []model.Field           `json:"fields,omitempty"`
-	Issues    []model.ValidationIssue `json:"issues,omitempty"`
-	CreatedAt string                  `json:"created_at,omitempty"`
+	ID         string                  `json:"id"`
+	DocType    string                  `json:"doc_type"`
+	Filename   string                  `json:"filename"`
+	Status     string                  `json:"status"`
+	Error      string                  `json:"error,omitempty"`
+	Fields     []model.Field           `json:"fields,omitempty"`
+	Issues     []model.ValidationIssue `json:"issues,omitempty"`
+	UploadedBy string                  `json:"uploaded_by,omitempty"`
+	ReviewedBy string                  `json:"reviewed_by,omitempty"`
+	CreatedAt  string                  `json:"created_at,omitempty"`
 }
 
 // QueryResult 是 GET /api/documents 的响应体。
@@ -103,13 +105,15 @@ type ErrorResponse struct {
 // ToView 把领域模型转成对外视图。
 func ToView(d *model.Document) DocumentView {
 	return DocumentView{
-		ID:        d.ID,
-		DocType:   d.DocType,
-		Filename:  d.Filename,
-		Status:    string(d.Status),
-		Error:     d.Error,
-		Fields:    d.Fields,
-		Issues:    d.Issues,
-		CreatedAt: d.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:         d.ID,
+		DocType:    d.DocType,
+		Filename:   d.Filename,
+		Status:     string(d.Status),
+		Error:      d.Error,
+		Fields:     d.Fields,
+		Issues:     d.Issues,
+		UploadedBy: d.UploadedBy,
+		ReviewedBy: d.ReviewedBy,
+		CreatedAt:  d.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

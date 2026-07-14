@@ -18,6 +18,7 @@ import (
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/clients"
+	"github.com/yuanyuexiang/phoenix/internal/identity"
 	"github.com/yuanyuexiang/phoenix/internal/model"
 	"github.com/yuanyuexiang/phoenix/internal/store"
 )
@@ -97,26 +98,59 @@ func New(wf *clients.Workflow, version string) *mcp.Server {
 	return srv
 }
 
+// userFromRequest 从当次请求的 OAuth TokenInfo 提取操作人身份。
+//
+// 注意:必须取 req.Extra.TokenInfo,不能用 auth.TokenInfoFromContext(ctx)——
+// Streamable HTTP 下工具 handler 的 ctx 源自 initialize 请求,不是当次 HTTP 请求;
+// SDK 对每个 JSON-RPC 请求单独附上 RequestExtra,身份始终是当次请求的。
+// OAuth 关闭或 optional 模式匿名调用时 TokenInfo 为 nil,返回 ok=false。
+func userFromRequest(req *mcp.CallToolRequest) (identity.User, bool) {
+	if req == nil || req.Extra == nil || req.Extra.TokenInfo == nil {
+		return identity.User{}, false
+	}
+	ti := req.Extra.TokenInfo
+	str := func(k string) string { s, _ := ti.Extra[k].(string); return s }
+	u := identity.User{
+		Sub:      ti.UserID,
+		Username: str("username"),
+		Email:    str("email"),
+		Name:     str("name"),
+	}
+	return u, !u.IsZero()
+}
+
+// withUser 把当次请求的身份注入 ctx,随 workflow 客户端的出站请求头透传落库。
+func withUser(ctx context.Context, req *mcp.CallToolRequest) context.Context {
+	if u, ok := userFromRequest(req); ok {
+		return identity.WithUser(ctx, u)
+	}
+	return ctx
+}
+
 // docResult 是各工具统一返回的文档视图。
 type docResult struct {
-	ID       string                  `json:"id" jsonschema:"文档 ID"`
-	DocType  string                  `json:"doc_type" jsonschema:"单据类型"`
-	Filename string                  `json:"filename"`
-	Status   string                  `json:"status" jsonschema:"uploaded|extracted|validated|needs_review|saved|failed"`
-	Error    string                  `json:"error,omitempty"`
-	Fields   []model.Field           `json:"fields,omitempty" jsonschema:"提取出的字段及置信度"`
-	Issues   []model.ValidationIssue `json:"issues,omitempty" jsonschema:"校验问题列表"`
+	ID         string                  `json:"id" jsonschema:"文档 ID"`
+	DocType    string                  `json:"doc_type" jsonschema:"单据类型"`
+	Filename   string                  `json:"filename"`
+	Status     string                  `json:"status" jsonschema:"uploaded|extracted|validated|needs_review|saved|failed"`
+	Error      string                  `json:"error,omitempty"`
+	Fields     []model.Field           `json:"fields,omitempty" jsonschema:"提取出的字段及置信度"`
+	Issues     []model.ValidationIssue `json:"issues,omitempty" jsonschema:"校验问题列表"`
+	UploadedBy string                  `json:"uploaded_by,omitempty" jsonschema:"上传人"`
+	ReviewedBy string                  `json:"reviewed_by,omitempty" jsonschema:"入库确认人"`
 }
 
 func toResult(v api.DocumentView) docResult {
 	return docResult{
-		ID:       v.ID,
-		DocType:  v.DocType,
-		Filename: v.Filename,
-		Status:   v.Status,
-		Error:    v.Error,
-		Fields:   v.Fields,
-		Issues:   v.Issues,
+		ID:         v.ID,
+		DocType:    v.DocType,
+		Filename:   v.Filename,
+		Status:     v.Status,
+		Error:      v.Error,
+		Fields:     v.Fields,
+		Issues:     v.Issues,
+		UploadedBy: v.UploadedBy,
+		ReviewedBy: v.ReviewedBy,
 	}
 }
 
@@ -129,7 +163,8 @@ type uploadInput struct {
 }
 
 func uploadHandler(wf *clients.Workflow) mcp.ToolHandlerFor[uploadInput, docResult] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in uploadInput) (*mcp.CallToolResult, docResult, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in uploadInput) (*mcp.CallToolResult, docResult, error) {
+		ctx = withUser(ctx, req)
 		view, err := wf.Upload(ctx, api.UploadRequest{
 			DocType:       in.DocType,
 			Filename:      in.Filename,
@@ -149,7 +184,8 @@ type docIDInput struct {
 }
 
 func extractHandler(wf *clients.Workflow) mcp.ToolHandlerFor[docIDInput, docResult] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in docIDInput) (*mcp.CallToolResult, docResult, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in docIDInput) (*mcp.CallToolResult, docResult, error) {
+		ctx = withUser(ctx, req)
 		view, err := wf.Extract(ctx, in.DocumentID)
 		if err != nil {
 			return nil, docResult{}, err
@@ -159,7 +195,8 @@ func extractHandler(wf *clients.Workflow) mcp.ToolHandlerFor[docIDInput, docResu
 }
 
 func validateHandler(wf *clients.Workflow) mcp.ToolHandlerFor[docIDInput, docResult] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in docIDInput) (*mcp.CallToolResult, docResult, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in docIDInput) (*mcp.CallToolResult, docResult, error) {
+		ctx = withUser(ctx, req)
 		view, err := wf.Validate(ctx, in.DocumentID)
 		if err != nil {
 			return nil, docResult{}, err
@@ -175,7 +212,8 @@ type saveInput struct {
 }
 
 func saveHandler(wf *clients.Workflow) mcp.ToolHandlerFor[saveInput, docResult] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in saveInput) (*mcp.CallToolResult, docResult, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in saveInput) (*mcp.CallToolResult, docResult, error) {
+		ctx = withUser(ctx, req)
 		view, err := wf.Save(ctx, in.DocumentID, api.SaveRequest{Fields: in.Fields, Force: in.Force})
 		if err != nil {
 			return nil, docResult{}, err
@@ -185,10 +223,11 @@ func saveHandler(wf *clients.Workflow) mcp.ToolHandlerFor[saveInput, docResult] 
 }
 
 type queryInput struct {
-	DocType string `json:"doc_type,omitempty" jsonschema:"按单据类型过滤"`
-	Status  string `json:"status,omitempty" jsonschema:"按状态过滤"`
-	Keyword string `json:"keyword,omitempty" jsonschema:"匹配文件名或正文的关键词"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"返回条数,默认 20,上限 100"`
+	DocType    string `json:"doc_type,omitempty" jsonschema:"按单据类型过滤"`
+	Status     string `json:"status,omitempty" jsonschema:"按状态过滤"`
+	Keyword    string `json:"keyword,omitempty" jsonschema:"匹配文件名或正文的关键词"`
+	UploadedBy string `json:"uploaded_by,omitempty" jsonschema:"按上传人过滤(操作人标识)"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"返回条数,默认 20,上限 100"`
 }
 
 type queryOutput struct {
@@ -197,12 +236,15 @@ type queryOutput struct {
 }
 
 func queryHandler(wf *clients.Workflow) mcp.ToolHandlerFor[queryInput, queryOutput] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in queryInput) (*mcp.CallToolResult, queryOutput, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in queryInput) (*mcp.CallToolResult, queryOutput, error) {
+		ctx = withUser(ctx, req)
+		// TODO: 「普通员工默认只查自己上传的文档」(方案 §8 Q5)未拍板,当前不做默认过滤
 		res, err := wf.Query(ctx, store.QueryFilter{
-			DocType: in.DocType,
-			Status:  in.Status,
-			Keyword: in.Keyword,
-			Limit:   in.Limit,
+			DocType:    in.DocType,
+			Status:     in.Status,
+			Keyword:    in.Keyword,
+			UploadedBy: in.UploadedBy,
+			Limit:      in.Limit,
 		})
 		if err != nil {
 			return nil, queryOutput{}, err
