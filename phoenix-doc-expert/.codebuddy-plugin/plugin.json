@@ -1,0 +1,43 @@
+{
+  "name": "phoenix-doc-expert",
+  "version": "1.0.1",
+  "description": "Enterprise document processing expert using Phoenix intelligent document platform",
+  "author": {
+    "name": "WorkBuddy",
+    "email": "support@workbuddy.cn"
+  },
+  "agents": ["./agents/phoenix-doc-expert.md"],
+
+  "expertType": "agent",
+  "agentName": "phoenix-doc-expert",
+
+  "displayName": {
+    "en": "Document Processing Expert",
+    "zh": "文档处理专家"
+  },
+  "profession": {
+    "en": "Phoenix Document Processing Consultant",
+    "zh": "Phoenix文档处理顾问"
+  },
+  "displayDescription": {
+    "en": "Process enterprise documents via Phoenix platform: upload, field extraction, validation, database storage, and historical document querying.",
+    "zh": "基于Phoenix智能文档平台，完成单据上传、字段提取、校验入库与历史文档查询全流程处理。"
+  },
+  "avatar": "avatars/expert.png",
+  "categoryId": "12-IndustryConsultant",
+  "defaultInitPrompt": {
+    "zh": "帮我上传并处理一份文档",
+    "en": "Help me upload and process a document"
+  },
+  "plugin": "phoenix-doc-expert",
+  "tags": [
+    { "en": "AI Recognition", "zh": "智能识别" },
+    { "en": "Field Extraction", "zh": "字段提取" },
+    { "en": "Document Validation", "zh": "文档校验" }
+  ],
+  "quickPrompts": [
+    { "en": "Help me upload and process a document", "zh": "帮我上传并处理一份文档" },
+    { "en": "Query recently processed documents", "zh": "查询最近处理过的文档" },
+    { "en": "Extract key fields from this contract", "zh": "提取这份合同的关键字段" }
+  ]
+}

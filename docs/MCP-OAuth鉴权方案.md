@@ -1,6 +1,11 @@
 # Phoenix MCP 端点 OAuth 2.1 鉴权与用户识别方案
 
-> 状态:**实施中(平台侧已落地,AS 选型与 WorkBuddy 能力确认仍待客户)**  |  版本 V1.1  |  日期 2026-07-14
+> 状态:**生产已启用(测试阶段,`required` 模式)**  |  版本 V1.2  |  日期 2026-07-15
+> AS = 自建 Keycloak(§3 选项 B),与平台同机 compose 部署,经 Traefik 以同域
+> `/auth` 子路径对外(issuer `https://phoenix.matrix-net.tech/auth/realms/phoenix`,
+> 复用平台 Postgres 的 keycloak 库)。端到端已实测:401 → 发现 → 取 token →
+> 调工具 → `uploaded_by` 落库。仍待:WorkBuddy 真机验证(§5)、AS 终局选型
+> (客户 IdP 联邦 or 沿用 Keycloak)与员工账号口径(§8)。
 >
 > 平台侧实现说明(§4 已全部落地):
 > - 鉴权开关为三档 `PHX_OAUTH_MODE=off|optional|required`(默认 off,零行为变化;

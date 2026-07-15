@@ -7,8 +7,10 @@
 ## 1. 前置条件
 
 **生产环境**(已部署):MCP 端点 `https://phoenix.matrix-net.tech/mcp`
-(传输协议 **Streamable HTTP**;平台已支持 OAuth 2.1 鉴权,生产由 `PHX_OAUTH_MODE`
-控制,⚠️ 当前默认 off,对外发布专家前必须开启,见 §5 与 `docs/MCP-OAuth鉴权方案.md`)。
+(传输协议 **Streamable HTTP**;**OAuth 2.1 鉴权已启用,`PHX_OAUTH_MODE=required`**,
+授权服务器为同域 Keycloak `https://phoenix.matrix-net.tech/auth/realms/phoenix`,
+详见 `docs/MCP-OAuth鉴权方案.md`)。员工账号在 Keycloak 管理台维护
+(`https://phoenix.matrix-net.tech/auth/admin`,realm 切到 phoenix)。
 
 **本机开发环境**:
 
@@ -38,6 +40,13 @@ make run-all      # 4 个 Go 服务
 
 > 不同客户端对 `type` 字段的叫法可能是 `streamable-http` / `http` / `url` 直连,
 > 以 WorkBuddy 实际支持为准。
+
+**鉴权行为(生产)**:连接器**无需配置任何密钥**。WorkBuddy 首次调用会收到
+401,支持 MCP 授权规范的客户端会自动完成「发现授权服务器 → 浏览器跳 Keycloak
+登录页」,员工用自己的账号登录一次即可,之后 token 自动续期无感。平台从 token
+识别操作人,落库到文档的 `uploaded_by/reviewed_by` 与审计日志。
+若 WorkBuddy 走不通该流程,说明其不支持 MCP OAuth——按方案 §6 降级静态 token
+(需 WorkBuddy 支持自定义 Authorization 头,平台侧需一次小改造)。
 
 若 WorkBuddy 仅支持 stdio 方式的 MCP 服务器,用 `mcp-remote` 桥接:
 
@@ -109,11 +118,20 @@ make run-all      # 4 个 Go 服务
 ## 4. 没有 WorkBuddy 时的联调方式
 
 - **MCP Inspector**(官方调试界面):
-  `npx @modelcontextprotocol/inspector`,连接 `http://localhost:8080/mcp`,可视化调用工具。
+  `npx @modelcontextprotocol/inspector`,连接 `http://localhost:8080/mcp`(本机,无鉴权)
+  或 `https://phoenix.matrix-net.tech/mcp`(生产,会自动弹 Keycloak 登录,可完整
+  演练员工侧的 OAuth 体验)。
 - **Claude Code 模拟**:
   `claude mcp add -t http phoenix http://localhost:8080/mcp`,对话式驱动,
   可用来预先调优专家提示词。
-- **仓库内冒烟客户端**:`make smoke`(backend/cmd/smoke,固定顺序调用五个工具)。
+- **仓库内冒烟客户端**:本机 `make smoke`;打生产(带 OAuth 全流程与身份落库断言):
+
+  ```bash
+  cd backend && go run ./cmd/smoke -addr https://phoenix.matrix-net.tech/mcp \
+    -sample ../samples/sample-generic.txt \
+    -oauth-issuer https://phoenix.matrix-net.tech/auth/realms/phoenix \
+    -oauth-user <用户名> -oauth-pass <密码> -require-auth
+  ```
 
 ## 4.5 发布专家(分发给团队/其他用户)
 
@@ -123,17 +141,19 @@ make run-all      # 4 个 Go 服务
    专家编辑页补全元信息(简介、开场白、示例指令)——发布后这些就是用户看到的门面。
 2. **发布动作**:在 WorkBuddy 专家页寻找「发布 / 共享 / 上架」入口,按平台支持的
    范围选择:团队内共享 → 全组织 → 专家市场。各平台叫法不同,以 WorkBuddy 文档为准。
-3. **发布前硬性检查**:过一遍发布包 §5 的检查清单——尤其是 **MCP 端点鉴权**
-   (发布 = 端点 URL 扩散,当前生产端点无鉴权,先补再发)和**正式单据类型 schema**
-   (别让用户拿着 generic 演示配置干真活)。
+3. **发布前硬性检查**:过一遍发布包 §5 的检查清单——鉴权已启用(required),
+   重点变为:**Keycloak 里换掉预置测试账号 alice/bob 的弱密码、建正式员工账号**,
+   以及**正式单据类型 schema**(别让用户拿着 generic 演示配置干真活)。
 4. **版本管理**:提示词/工具/schema 任何一项变更,同步更新发布包的版本号与变更记录,
    再在 WorkBuddy 重新发布。
 
 ## 5. 生产部署前的待办(与说明书 §14 对应)
 
-- [x] ~~MCP 端点鉴权方式~~ 平台侧 OAuth 2.1 资源服务器已实现(`docs/MCP-OAuth鉴权方案.md`,
-      三档开关 `PHX_OAUTH_MODE`,当前生产为 off);仍待:AS 选型拍板(方案 §3)、
-      WorkBuddy 对方案 §5 四项能力的书面确认(不支持则降级静态 token,方案 §6)【待确认】
+- [x] ~~MCP 端点鉴权方式~~ **生产已启用 OAuth 2.1(required)**:Keycloak 同域
+      `/auth` 部署为授权服务器,端到端已实测(401→取 token→调工具→身份落库)。
+      仍待:WorkBuddy 真机验证 OAuth 流程(即方案 §5 四项能力的实测,不支持则降级
+      静态 token,方案 §6);AS 终局选型(客户 IdP 联邦 or 沿用 Keycloak,方案 §3)【待确认】
+- [ ] Keycloak 预置测试账号(alice/bob)换强密码 / 建正式员工账号(发布前必做)
 - [ ] WorkBuddy 是否支持 MCP sampling(决定 AI 模型能否复用 WorkBuddy 侧)【待确认】
 - [ ] 大文件上传通道:file_url 的来源约定(WorkBuddy 文件存储 or MinIO 预签名)【待确认】
 - [ ] 耗时文档的异步语义(任务 ID + 轮询)——当前为同步调用,大图/长文档会阻塞
