@@ -140,13 +140,13 @@ jobs:
         id: meta
         run: echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: 同步 compose 文件到服务器
+      - name: 同步 compose 与 Keycloak realm 到服务器
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: deploy/docker-compose.prod.yml
+          source: deploy/docker-compose.prod.yml,deploy/keycloak/phoenix-realm.json
           target: ${{ vars.DEPLOY_DIR || '/opt/phoenix' }}
           strip_components: 1
 

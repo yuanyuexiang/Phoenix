@@ -4,7 +4,8 @@
 #
 # 拓扑(Traefik 已在服务器上运行,独占 80/443,回源网络 matrix-network):
 #   Traefik ──▶ admin(nginx :8084,SPA + /api 反代 workflow)   Host(${DIP_DOMAIN})
-#          └──▶ mcp(:8080,WorkBuddy 连接器)                    Host(${DIP_DOMAIN}) && PathPrefix(/mcp)
+#          ├──▶ mcp(:8080,WorkBuddy 连接器)                    Host(${DIP_DOMAIN}) && PathPrefix(/mcp)
+#          └──▶ keycloak(:8080,MCP OAuth 授权服务器)           Host(${DIP_DOMAIN}) && PathPrefix(/auth)
 #   其余服务(workflow/parser/ai/postgres/minio/redis)仅内部网络互通,不暴露。
 #
 # 注意:
@@ -103,6 +104,46 @@ services:
       PHX_ADMIN_PASSWORD: ${PHX_ADMIN_PASSWORD:?生产必须设置管理后台访问密码}
     networks: [internal]
 
+  keycloak: # 授权服务器(MCP OAuth;测试阶段部署,AS 选型拍板后可替换或做企业账号联邦)
+    image: quay.io/keycloak/keycloak:26.5
+    container_name: phoenix-keycloak
+    restart: unless-stopped
+    command: start --import-realm
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?必须设置 Keycloak 管理员密码}
+      # 复用平台 Postgres;首次部署前需一次性建库(见 .env.prod.example 注释)
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:-phoenix}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # TLS 由 Traefik 终止;/auth 子路径复用主域名,无需新增 DNS
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HOSTNAME: https://phoenix.matrix-net.tech/auth
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/phoenix-realm.json:/opt/keycloak/data/import/phoenix-realm.json:ro
+    healthcheck: # 管理口 9000;注意健康路径也吃 KC_HTTP_RELATIVE_PATH(实测 /auth/health/ready)
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /auth/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [internal, matrix-network]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.phoenix-keycloak.rule=Host(`phoenix.matrix-net.tech`) && PathPrefix(`/auth`)"
+      - "traefik.http.routers.phoenix-keycloak.entrypoints=websecure"
+      - "traefik.http.routers.phoenix-keycloak.service=phoenix-keycloak"
+      - "traefik.http.services.phoenix-keycloak.loadbalancer.server.port=8080"
+      - "traefik.http.routers.phoenix-keycloak.tls=true"
+      - "traefik.http.routers.phoenix-keycloak.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
+
   mcp: # WorkBuddy 连接器,经 Traefik 以 /mcp 路径对外
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-mcp:${TAG:-latest}
     container_name: phoenix-mcp
@@ -116,6 +157,7 @@ services:
       # 先 optional 灰度观察再切 required)
       PHX_OAUTH_MODE: ${PHX_OAUTH_MODE:-off}
       PHX_OAUTH_ISSUER: ${PHX_OAUTH_ISSUER:-}
+      PHX_OAUTH_DISCOVERY_URL: ${PHX_OAUTH_DISCOVERY_URL:-} # 容器内取 JWKS 的内网地址(公网回环不可靠)
       PHX_OAUTH_AUDIENCE: ${PHX_OAUTH_AUDIENCE:-phoenix-mcp}
       PHX_OAUTH_RESOURCE: ${PHX_OAUTH_RESOURCE:-https://phoenix.matrix-net.tech/mcp}
     networks: [internal, matrix-network]
