@@ -10,3 +10,6 @@ __pycache__/
 ssh-key*
 /参考/
 deploy/docker-compose.traefik.yml
+
+# API key 导出文件,严禁入库
+*apiKey*.csv

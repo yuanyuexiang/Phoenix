@@ -5,6 +5,7 @@ package clients
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -145,6 +146,16 @@ func (c *AI) Classify(ctx context.Context, req api.ClassifyRequest) (api.Classif
 		return api.ClassifyResponse{}, fmt.Errorf("ai: %w", err)
 	}
 	return out, nil
+}
+
+// Transcribe 把图片交给 ai 服务的视觉大模型转写为文本(替代原独立 OCR 服务)。
+func (c *AI) Transcribe(ctx context.Context, filename string, data []byte) (string, error) {
+	req := api.TranscribeRequest{Filename: filename, ContentBase64: base64.StdEncoding.EncodeToString(data)}
+	out, err := postJSON[api.TranscribeRequest, api.TranscribeResponse](ctx, c.http, c.base+"/transcribe", req)
+	if err != nil {
+		return "", fmt.Errorf("ai: %w", err)
+	}
+	return out.Text, nil
 }
 
 // Workflow 是工作流引擎的客户端,MCP Server 等内部服务使用。

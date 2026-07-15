@@ -4,12 +4,12 @@
 >
 > **Phoenix** 是本产品的项目代号。
 
-自动处理企业文档(扫描件、PDF、Word、Excel、图片等),通过 **OCR + AI 识别 + 规则校验**,
+自动处理企业文档(扫描件、PDF、Word、Excel、图片等),通过 **AI 视觉转写 + AI 识别 + 规则校验**,
 把非结构化文档转换为结构化数据,并自动写入数据库和文件服务器。可作为 **MCP 服务**接入
 [WorkBuddy](#与-workbuddy-集成)。
 
 > **项目状态:开发中。** Monorepo 多服务骨架已就绪(MCP 连接器、工作流引擎、
-> 文档解析、AI 提取、OCR、管理后台六个服务),端到端流程(上传→提取→校验→
+> 文档解析、AI 提取/转写、管理后台五个服务),端到端流程(上传→提取→校验→
 > 人工审核→入库→查询)已跑通;PDF/Excel 解析、LLM 真实提取待接入客户环境后启用。
 
 ## 目标用户
@@ -21,7 +21,7 @@
 | # | 功能 | 说明 |
 |---|------|------|
 | ① | 文档上传 | 支持扫描件、PDF、Word、Excel、图片等 |
-| ② | OCR 识别 | 提取图片/扫描件中的文字 |
+| ② | 图片文字识别 | 视觉大模型转写图片/扫描件中的文字 |
 | ③ | 文档解析 | 解析 PDF / Word / Excel 内容 |
 | ④ | AI 字段提取 | 用大模型从文本中抽取结构化字段 |
 | ⑤ | 数据校验 | 基于规则校验提取结果 |
@@ -34,7 +34,7 @@
 ## 业务流程
 
 ```
-上传文档 → OCR识别 → 文档解析 → AI提取字段 → 规则校验
+上传文档 → 文字识别/解析 → AI提取字段 → 规则校验
         → 人工审核(可选) → 写入数据库 → 文件归档 → 完成
 ```
 
@@ -44,7 +44,6 @@
 docs/       产品文档(说明书、WorkBuddy 接入指南)
 frontend/   前端管理后台 —— Next.js + Tailwind(人工审核、查询、服务状态)
 backend/    Go 后端 —— 四个服务:workflow / parser / ai / mcp
-ocr/        OCR 服务 —— Python + PaddleOCR
 deploy/     docker-compose
 samples/    演示样例
 ```
@@ -56,8 +55,7 @@ samples/    演示样例
 | MCP Server | `backend/cmd/mcp` | WorkBuddy 连接器,主要使用入口(8080,`/mcp`) |
 | 工作流引擎 | `backend/cmd/workflow` | 编排流水线、持有存储,REST API(8081) |
 | 文档解析服务 | `backend/cmd/parser` | PDF / Word / Excel → 纯文本(8082) |
-| AI 服务 | `backend/cmd/ai` | 大模型字段提取,Mock/LLM 可切换(8083) |
-| OCR 服务 | `ocr/` | 图片/扫描件文字识别,PaddleOCR/Python(8001) |
+| AI 服务 | `backend/cmd/ai` | 大模型字段提取 + 图片视觉转写,模型可配置(8083) |
 | 前端管理后台 | `frontend/` | Next.js + Tailwind:人工审核、查询、服务状态(8084) |
 | 数据库 | — | PostgreSQL,存储结构化数据(5433) |
 | 对象存储 | — | MinIO,存储原始文件(9100/9101) |
@@ -65,7 +63,7 @@ samples/    演示样例
 
 ## 技术选型
 
-Go · PaddleOCR · DeepSeek / Qwen · PostgreSQL · MinIO · Redis · Docker
+Go · DeepSeek / Qwen · Qwen-VL(视觉转写) · PostgreSQL · MinIO · Redis · Docker
 
 ## 与 WorkBuddy 集成
 
@@ -90,7 +88,7 @@ Go · PaddleOCR · DeepSeek / Qwen · PostgreSQL · MinIO · Redis · Docker
 依赖:Go 1.26+、Node 20+、Docker。
 
 ```bash
-make infra-up       # 拉起 Postgres / MinIO / Redis / OCR 容器
+make infra-up       # 拉起 Postgres / MinIO / Redis 容器
 make run-all        # 前台并行启动 4 个 Go 服务(Ctrl-C 全停)
 make fe-install && make fe-dev   # 另开终端:前端 dev server(8084)
 make smoke          # 另开终端:模拟 WorkBuddy 调用五个 MCP 工具,端到端跑通流水线

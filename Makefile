@@ -51,6 +51,10 @@ smoke-oauth:
 	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt \
 		-oauth-issuer http://localhost:8180/realms/phoenix -oauth-user alice -oauth-pass alice123 -require-auth
 
+# 图片转写冒烟:ai 服务须已配置 PHX_VISION_*(视觉大模型)
+smoke-vision:
+	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt -image ../samples/sample-generic.png
+
 # ---- 前端(frontend/,Next.js)----
 .PHONY: fe-install fe-dev fe-build
 fe-install:
@@ -65,12 +69,12 @@ fe-build: # 静态导出到 frontend/out(生产由 nginx 托管,见 frontend/Doc
 # ---- 基础设施 / 部署(deploy/)----
 .PHONY: infra-up infra-down compose-up compose-down
 infra-up:
-	docker compose -f deploy/docker-compose.yml up -d postgres minio redis ocr
+	docker compose -f deploy/docker-compose.yml up -d postgres minio redis
 
 infra-down:
 	docker compose -f deploy/docker-compose.yml down
 
-# 全套容器化(六个应用服务 + 基础设施)
+# 全套容器化(五个应用服务 + 基础设施)
 compose-up:
 	docker compose -f deploy/docker-compose.yml up -d --build
 

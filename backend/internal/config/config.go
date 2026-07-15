@@ -20,15 +20,20 @@ type Config struct {
 	MinioBucket    string
 	MinioUseSSL    bool
 
-	OCRBaseURL      string // OCR 服务地址
 	ParserBaseURL   string // 文档解析服务地址
-	AIBaseURL       string // AI 字段提取服务地址
+	AIBaseURL       string // AI 字段提取/图片转写服务地址
 	WorkflowBaseURL string // 工作流引擎地址(mcp/admin 使用)
 
 	// LLM 为空则使用 Mock 提取器。
 	LLMEndpoint string
 	LLMAPIKey   string
 	LLMModel    string
+
+	// Vision 为空则图片转写未启用(上传图片会在提取阶段明确报错)。
+	// 任何 OpenAI 兼容视觉端点均可,基准为阿里 DashScope 兼容模式。
+	VisionEndpoint string // 如 https://dashscope.aliyuncs.com/compatible-mode/v1
+	VisionAPIKey   string
+	VisionModel    string
 
 	MinConfidence   float64 // 字段置信度低于该值转人工审核
 	ClassifyMinConf float64 // 自动分类置信度低于该值走开放提取兜底
@@ -61,7 +66,6 @@ func Load() Config {
 		MinioBucket:    env("PHX_MINIO_BUCKET", "documents"),
 		MinioUseSSL:    envBool("PHX_MINIO_USE_SSL", false),
 
-		OCRBaseURL:      env("PHX_OCR_URL", "http://localhost:8001"),
 		ParserBaseURL:   env("PHX_PARSER_URL", "http://localhost:8082"),
 		AIBaseURL:       env("PHX_AI_URL", "http://localhost:8083"),
 		WorkflowBaseURL: env("PHX_WORKFLOW_URL", "http://localhost:8081"),
@@ -69,6 +73,11 @@ func Load() Config {
 		LLMEndpoint: env("PHX_LLM_ENDPOINT", ""),
 		LLMAPIKey:   env("PHX_LLM_API_KEY", ""),
 		LLMModel:    env("PHX_LLM_MODEL", "deepseek-chat"),
+
+		// 默认 qwen-vl-plus:实测 qwen-vl-ocr 不遵循转写指令(强制表格+代码围栏)
+		VisionEndpoint: env("PHX_VISION_ENDPOINT", ""),
+		VisionAPIKey:   env("PHX_VISION_API_KEY", ""),
+		VisionModel:    env("PHX_VISION_MODEL", "qwen-vl-plus"),
 
 		MinConfidence:   envFloat("PHX_MIN_CONFIDENCE", 0.8),
 		ClassifyMinConf: envFloat("PHX_CLASSIFY_MIN_CONF", 0.5),

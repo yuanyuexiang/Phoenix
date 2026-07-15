@@ -1,6 +1,6 @@
-// Package extract 实现 AI 字段提取与单据分类。
+// Package extract 实现 AI 字段提取、单据分类与图片转写。
 //
-// Extractor 是唯一入口接口;当前提供两个实现:
+// Extractor 是文本能力的入口接口;当前提供两个实现:
 //   - Mock:基于"标签: 值"行匹配的确定性实现,开发/演示用,无外部依赖。
 //   - LLM:OpenAI 兼容端点(DeepSeek/Qwen/客户自备模型),配置了 endpoint 即启用。
 //
@@ -8,6 +8,9 @@
 //   - Classify:类型未知时,在已配置的单据类型中自动识别;
 //   - Extract:类型已知,按 schema 定向提取字段;
 //   - ExtractOpen:类型识别失败的兜底,提取文档中实际存在的全部键值对,交人工审核。
+//
+// Transcriber(图片 → 文本转写,视觉大模型,配置 PHX_VISION_ENDPOINT 启用)
+// 与 Extractor 相互独立:Mock 不提供转写,未配置时上传图片会明确报错。
 //
 // 提取逻辑始终在平台内执行(见产品说明书 §13),模型只是可替换的资源。
 package extract

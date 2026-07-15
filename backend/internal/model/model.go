@@ -9,7 +9,7 @@ type Status string
 
 const (
 	StatusUploaded    Status = "uploaded"     // 已上传归档,待提取
-	StatusExtracted   Status = "extracted"    // 已完成 OCR/解析与字段提取
+	StatusExtracted   Status = "extracted"    // 已完成文字识别/解析与字段提取
 	StatusValidated   Status = "validated"    // 规则校验通过,可入库
 	StatusNeedsReview Status = "needs_review" // 校验未通过或置信度不足,待人工审核
 	StatusSaved       Status = "saved"        // 结构化数据已确认入库
@@ -44,7 +44,7 @@ type Document struct {
 	DocType    string            `json:"doc_type"`
 	Filename   string            `json:"filename"`
 	ObjectKey  string            `json:"object_key"` // MinIO 中的归档位置
-	Text       string            `json:"-"`          // OCR/解析后的正文,查询结果默认不回传
+	Text       string            `json:"-"`          // 识别/解析后的正文,查询结果默认不回传
 	Status     Status            `json:"status"`
 	Error      string            `json:"error,omitempty"`
 	Fields     []Field           `json:"fields"`

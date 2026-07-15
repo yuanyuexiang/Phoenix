@@ -13,7 +13,7 @@
 **本机开发环境**:
 
 ```bash
-make infra-up     # Postgres / MinIO / Redis / OCR
+make infra-up     # Postgres / MinIO / Redis
 make run-all      # 4 个 Go 服务
 ```
 
@@ -57,7 +57,7 @@ make run-all      # 4 个 Go 服务
 | 工具 | 作用 |
 |------|------|
 | `upload_document` | 上传文档(`content_text` / `content_base64` / `file_url` 三选一) |
-| `extract_fields` | OCR/解析 + AI 字段提取 |
+| `extract_fields` | 文字识别/解析 + AI 字段提取 |
 | `validate_document` | 规则校验(通过 → validated;不通过 → needs_review) |
 | `save_database` | 确认入库(可携带人工修正后的 fields,或 force) |
 | `query_document` | 按类型/状态/关键词查询 |

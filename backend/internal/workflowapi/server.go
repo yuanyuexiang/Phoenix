@@ -2,7 +2,7 @@
 // cmd/workflow 只负责装配依赖并调用 NewHandler;路由一览:
 //
 //	POST /api/documents                上传(content_text/base64/file_url 三选一)
-//	POST /api/documents/{id}/extract   OCR/解析 + AI 字段提取
+//	POST /api/documents/{id}/extract   文字识别/解析 + AI 字段提取
 //	POST /api/documents/{id}/validate  规则校验
 //	POST /api/documents/{id}/save      确认入库(可带人工修正 fields / force)
 //	GET  /api/documents                查询(doc_type/status/keyword/uploaded_by/limit)

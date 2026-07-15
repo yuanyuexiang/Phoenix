@@ -1,11 +1,14 @@
-// AI 服务(说明书 §7):基于大模型的字段提取,无状态。
-// POST /extract {text, doc_type, fields[]} → {extractor, fields[]}。
+// AI 服务(说明书 §7):基于大模型的字段提取与图片转写,无状态。
+// POST /extract    {text, doc_type, fields[]}   → {extractor, fields[]}
+// POST /transcribe {filename, content_base64}   → {text, transcriber}(视觉大模型)
 //
 // 字段定义随请求下发(单据类型配置归 workflow 管);
-// 模型来源可配置:设 PHX_LLM_ENDPOINT 用真实模型,否则用 Mock(说明书 §13)。
+// 模型来源可配置(说明书 §13):设 PHX_LLM_ENDPOINT 用真实模型,否则用 Mock;
+// 设 PHX_VISION_ENDPOINT 启用图片转写,否则 /transcribe 返回"未启用"。
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -31,6 +34,14 @@ func main() {
 	}
 	slog.Info("ai 字段提取器就绪", "extractor", extractor.Name())
 
+	var transcriber extract.Transcriber // nil = 图片转写未启用
+	if cfg.VisionEndpoint != "" {
+		transcriber = extract.NewVLM(cfg.VisionEndpoint, cfg.VisionAPIKey, cfg.VisionModel)
+		slog.Info("ai 图片转写器就绪", "transcriber", transcriber.Name())
+	} else {
+		slog.Warn("未配置 PHX_VISION_ENDPOINT,图片转写未启用(上传图片将在提取阶段报错)")
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -41,6 +52,9 @@ func main() {
 	})
 	mux.HandleFunc("POST /classify", func(w http.ResponseWriter, r *http.Request) {
 		handleClassify(w, r, extractor)
+	})
+	mux.HandleFunc("POST /transcribe", func(w http.ResponseWriter, r *http.Request) {
+		handleTranscribe(w, r, transcriber)
 	})
 
 	if err := httpx.Serve(addr, mux, "ai 字段提取服务"); err != nil {
@@ -114,6 +128,34 @@ func handleClassify(w http.ResponseWriter, r *http.Request, extractor extract.Ex
 		return
 	}
 	writeJSON(w, api.ClassifyResponse{DocType: docType, Confidence: confidence, Classifier: extractor.Name()})
+}
+
+func handleTranscribe(w http.ResponseWriter, r *http.Request, transcriber extract.Transcriber) {
+	if transcriber == nil {
+		writeError(w, http.StatusNotImplemented,
+			"图片转写未启用:请为 ai 服务配置 PHX_VISION_ENDPOINT / PHX_VISION_API_KEY / PHX_VISION_MODEL(OpenAI 兼容视觉端点,如阿里云百炼)")
+		return
+	}
+	var req api.TranscribeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体解析失败: "+err.Error())
+		return
+	}
+	if req.Filename == "" || req.ContentBase64 == "" {
+		writeError(w, http.StatusBadRequest, "filename 与 content_base64 均不能为空")
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(req.ContentBase64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "content_base64 解码失败: "+err.Error())
+		return
+	}
+	text, err := transcriber.Transcribe(r.Context(), req.Filename, data)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, api.TranscribeResponse{Text: text, Transcriber: transcriber.Name()})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

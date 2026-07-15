@@ -4,8 +4,8 @@
 //
 //	WorkBuddy ─MCP→ services/mcp ──┐
 //	                               ├─REST→ services/workflow ──→ services/parser
-//	浏览器 ───→ services/admin ────┘        │      │    │        services/ai
-//	                                        ▼      ▼    └──────→ services/ocr
+//	浏览器 ───→ services/admin ────┘        │      │    └──────→ services/ai(提取/分类/图片转写)
+//	                                        ▼      ▼
 //	                                  PostgreSQL  MinIO
 package api
 
@@ -95,6 +95,18 @@ type FieldSpecView struct {
 type ExtractResponse struct {
 	Extractor string        `json:"extractor"` // mock 或 llm:<model>
 	Fields    []model.Field `json:"fields"`
+}
+
+// TranscribeRequest 是 ai 服务 POST /transcribe 的请求体(图片 → 文字转写)。
+type TranscribeRequest struct {
+	Filename      string `json:"filename"`
+	ContentBase64 string `json:"content_base64"`
+}
+
+// TranscribeResponse 是 ai 服务 POST /transcribe 的响应体。
+type TranscribeResponse struct {
+	Text        string `json:"text"`
+	Transcriber string `json:"transcriber"` // vision:<model>
 }
 
 // ErrorResponse 是各服务统一的错误响应体。

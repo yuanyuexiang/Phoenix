@@ -76,7 +76,7 @@ func New(wf *clients.Workflow, version string) *mcp.Server {
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "extract_fields",
-		Description: "对已上传的文档执行 OCR/解析与 AI 字段提取,返回字段键值对及置信度。",
+		Description: "对已上传的文档执行文字识别/解析与 AI 字段提取,返回字段键值对及置信度。",
 	}, extractHandler(wf))
 
 	mcp.AddTool(srv, &mcp.Tool{

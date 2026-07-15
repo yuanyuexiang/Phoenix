@@ -1,10 +1,10 @@
 # Phoenix 全套服务(对应说明书 §7 系统组成):
-#   mcp(连接器/主入口) workflow(工作流引擎) parser(文档解析) ai(AI提取)
-#   ocr(PaddleOCR) admin(前端管理后台) + postgres/minio/redis
+#   mcp(连接器/主入口) workflow(工作流引擎) parser(文档解析)
+#   ai(AI提取/图片转写) admin(前端管理后台) + postgres/minio/redis
 #
 # 全套启动:  docker compose -f deploy/docker-compose.yml up -d --build
 # 仅基础设施(本机调试 Go/前端时):
-#   docker compose -f deploy/docker-compose.yml up -d postgres minio redis ocr
+#   docker compose -f deploy/docker-compose.yml up -d postgres minio redis
 services:
   postgres:
     image: postgres:16-alpine
@@ -44,13 +44,6 @@ services:
     ports:
       - "6380:6379"
 
-  ocr: # OCR 服务(Python PaddleOCR)
-    build: ../ocr
-    ports:
-      - "8001:8000"
-    volumes:
-      - paddlemodels:/root/.paddleocr # 复用已下载的模型
-
   parser: # 文档解析服务
     build:
       context: ../backend
@@ -58,7 +51,7 @@ services:
     ports:
       - "8082:8082"
 
-  ai: # AI 字段提取服务
+  ai: # AI 字段提取/图片转写服务
     build:
       context: ../backend
       args: { SERVICE: ai }
@@ -67,6 +60,10 @@ services:
       # PHX_LLM_ENDPOINT: https://api.deepseek.com/v1
       # PHX_LLM_API_KEY: ${DEEPSEEK_API_KEY}
       # PHX_LLM_MODEL: deepseek-chat
+      # 配置视觉大模型后图片可转写,不配则上传图片会在提取阶段明确报错:
+      # PHX_VISION_ENDPOINT: https://dashscope.aliyuncs.com/compatible-mode/v1
+      # PHX_VISION_API_KEY: ${DASHSCOPE_API_KEY}
+      # PHX_VISION_MODEL: qwen-vl-plus
       PHX_AI_ADDR: ":8083"
     ports:
       - "8083:8083"
@@ -85,7 +82,6 @@ services:
       PHX_MINIO_ENDPOINT: minio:9000
       PHX_MINIO_ACCESS_KEY: phoenix
       PHX_MINIO_SECRET_KEY: phoenix-secret
-      PHX_OCR_URL: http://ocr:8000
       PHX_PARSER_URL: http://parser:8082
       PHX_AI_URL: http://ai:8083
       PHX_ADMIN_PASSWORD: phoenix123 # 管理后台访问密码,生产务必修改
@@ -122,7 +118,7 @@ services:
       # PHX_OAUTH_DISCOVERY_URL 走内网取 JWKS,iss 校验仍按此 URL
       KC_HOSTNAME: http://localhost:8180
     ports:
-      - "8180:8080" # 避开项目端口约定(8080-8084/8001/5433/9100/9101/6380)与他项目占用
+      - "8180:8080" # 避开项目端口约定(8080-8084/5433/9100/9101/6380)与他项目占用
     volumes:
       - ./keycloak/phoenix-realm.json:/opt/keycloak/data/import/phoenix-realm.json:ro
     healthcheck: # 健康端点在管理口 9000(容器内);镜像无 curl,用 bash /dev/tcp
@@ -141,4 +137,3 @@ services:
 volumes:
   pgdata:
   miniodata:
-  paddlemodels:

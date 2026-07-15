@@ -1,7 +1,7 @@
 // Package parser 把办公文档格式统一转成纯文本(文档解析服务的核心逻辑)。
 //
 // 已支持:纯文本、.docx(解压取 word/document.xml)。
-// 图片不在此处理——workflow 会把图片路由到 OCR 服务。
+// 图片不在此处理——workflow 会把图片路由到 ai 服务做视觉转写。
 // TODO:.pdf(需区分文字层与扫描件)、.xlsx、老版 .doc —— 见产品说明书 §5 功能③。
 package parser
 
@@ -15,9 +15,11 @@ import (
 	"strings"
 )
 
-// ImageExts 是应当走 OCR 而非本包的图片扩展名(小写、含点)。
+// ImageExts 是应当交由 ai 服务视觉转写而非本包的图片扩展名(小写、含点)。
+// 取值须与视觉端点支持的格式一致(extract.imageMIME,单测强制同步):
+// DashScope 不支持 tiff,故 .tif/.tiff 不在此表(见 ExtractText 的显式报错)。
 var ImageExts = map[string]bool{
-	".png": true, ".jpg": true, ".jpeg": true, ".bmp": true, ".tif": true, ".tiff": true, ".webp": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".bmp": true, ".webp": true, ".heic": true,
 }
 
 // ExtractText 按扩展名解析文档为纯文本。
@@ -29,7 +31,9 @@ func ExtractText(filename string, data []byte) (string, error) {
 	case ext == ".docx":
 		return docxText(data)
 	case ImageExts[ext]:
-		return "", fmt.Errorf("parser: 图片应交由 OCR 服务处理")
+		return "", fmt.Errorf("parser: 图片应交由 AI 视觉转写处理")
+	case ext == ".tif" || ext == ".tiff":
+		return "", fmt.Errorf("parser: 暂不支持 TIFF 图片,请转换为 PNG/JPEG 后重试")
 	case ext == ".pdf":
 		return "", fmt.Errorf("parser: PDF 解析尚未实现(需区分文字层与扫描件)")
 	case ext == ".xlsx" || ext == ".xls" || ext == ".doc":

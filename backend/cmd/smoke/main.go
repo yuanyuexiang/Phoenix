@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -30,6 +32,7 @@ import (
 func main() {
 	addr := flag.String("addr", "http://localhost:8080/mcp", "Phoenix MCP 端点")
 	sample := flag.String("sample", "samples/sample-generic.txt", "样例文档路径")
+	image := flag.String("image", "", "图片样例路径(非空时追加图片转写用例,需 ai 服务已配置 PHX_VISION_*)")
 	token := flag.String("token", "", "现成的 access token(优先于 -oauth-* 取 token)")
 	oauthIssuer := flag.String("oauth-issuer", "", "授权服务器 issuer,设置后用 password grant 取 token")
 	oauthClient := flag.String("oauth-client", "phoenix-smoke", "OAuth 客户端 ID(须开 Direct Access Grant)")
@@ -135,6 +138,26 @@ func main() {
 		log.Fatalf("自动分类应识别为 generic,得到 %v", exAuto["doc_type"])
 	}
 	fmt.Println("\n✅ 自动分类:auto → generic 识别正确")
+
+	// 图片转写:上传图片 → 视觉大模型转写 → 提取 → 校验(-image 指定时执行)
+	if *image != "" {
+		img, err := os.ReadFile(*image)
+		if err != nil {
+			log.Fatal(err)
+		}
+		upImg := call(ctx, session, "upload_document", map[string]any{
+			"doc_type":       "generic",
+			"filename":       filepath.Base(*image),
+			"content_base64": base64.StdEncoding.EncodeToString(img),
+		})
+		imgID := upImg["id"].(string)
+		exImg := call(ctx, session, "extract_fields", map[string]any{"document_id": imgID})
+		if fields, _ := exImg["fields"].([]any); len(fields) == 0 {
+			log.Fatalf("图片转写后应提取出字段,得到 %v", exImg["fields"])
+		}
+		call(ctx, session, "validate_document", map[string]any{"document_id": imgID})
+		fmt.Println("\n✅ 图片转写:上传 → 视觉转写 → 提取 → 校验跑通")
+	}
 
 	fmt.Println("✅ 五个工具全部调用成功,流水线端到端跑通")
 }

@@ -1,10 +1,10 @@
 // Package pipeline 是工作流引擎(说明书 §7)的编排核心:
 //
-//	上传 → OCR/解析 → AI字段提取 → 规则校验 → [人工审核] → 入库 → 归档
+//	上传 → 文字识别/解析 → AI字段提取 → 规则校验 → [人工审核] → 入库 → 归档
 //
 // 每个阶段状态持久化在 documents.status,调用方(MCP/管理后台)可分步驱动、
-// 断点续跑。OCR、文档解析、AI 提取分别是独立服务,这里只做路由与编排:
-// 图片 → OCR 服务;办公文档 → parser 服务;正文 → ai 服务。
+// 断点续跑。文档解析与 AI 能力是独立服务,这里只做路由与编排:
+// 图片 → ai 服务视觉转写;办公文档 → parser 服务;正文 → ai 服务提取。
 package pipeline
 
 import (
@@ -19,7 +19,6 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/clients"
 	"github.com/yuanyuexiang/phoenix/internal/model"
-	"github.com/yuanyuexiang/phoenix/internal/ocr"
 	"github.com/yuanyuexiang/phoenix/internal/parser"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
@@ -29,9 +28,8 @@ import (
 type Pipeline struct {
 	DB              *store.DB
 	Objects         *store.Objects
-	OCR             *ocr.Client     // OCR 服务(图片)
 	Parser          *clients.Parser // 文档解析服务(PDF/Word/Excel)
-	AI              *clients.AI     // AI 字段提取/分类服务
+	AI              *clients.AI     // AI 字段提取/分类/图片转写服务
 	Registry        *schema.Registry
 	MinConfidence   float64 // 字段置信度低于此值转人工
 	ClassifyMinConf float64 // 自动分类置信度低于此值走开放提取兜底
@@ -73,7 +71,7 @@ func (p *Pipeline) Upload(ctx context.Context, docType, filename string, data []
 	return doc, nil
 }
 
-// ExtractFields 实现 extract_fields:取正文(图片走 OCR 服务,文档走解析服务),
+// ExtractFields 实现 extract_fields:取正文(图片走 ai 服务视觉转写,文档走解析服务),
 // 类型未知时先自动分类,再调用 AI 服务提取字段:
 //   - 分类命中已配置类型 → 按该类型 schema 定向提取;
 //   - 分类失败 → 标记 unknown,开放提取兜底(校验阶段必转人工审核)。
@@ -93,7 +91,7 @@ func (p *Pipeline) ExtractFields(ctx context.Context, id string) (*model.Documen
 			return p.fail(ctx, doc, err)
 		}
 		if strings.TrimSpace(text) == "" {
-			return p.fail(ctx, doc, fmt.Errorf("OCR/解析未从文档中识别出任何文字,请确认上传的是单据而非普通照片"))
+			return p.fail(ctx, doc, fmt.Errorf("未能从文档中识别出任何文字,请确认上传的是单据而非普通照片"))
 		}
 		doc.Text = text
 	}
@@ -167,11 +165,11 @@ func (p *Pipeline) classifyCandidates() []api.DocTypeCandidate {
 	return candidates
 }
 
-// toText 按文件类型路由:图片 → OCR 服务,其余 → 文档解析服务。
+// toText 按文件类型路由:图片 → ai 服务视觉转写,其余 → 文档解析服务。
 func (p *Pipeline) toText(ctx context.Context, filename string, data []byte) (string, error) {
 	ext := strings.ToLower(filepath.Ext(filename))
 	if parser.ImageExts[ext] {
-		return p.OCR.Recognize(ctx, filename, data)
+		return p.AI.Transcribe(ctx, filename, data)
 	}
 	return p.Parser.Parse(ctx, filename, data)
 }

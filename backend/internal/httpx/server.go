@@ -15,7 +15,7 @@ import (
 
 const (
 	readHeaderTimeout = 10 * time.Second // 防慢连接(Slowloris)
-	shutdownGrace     = 30 * time.Second // 优雅关闭窗口;OCR/LLM 长请求超过该时长会被截断
+	shutdownGrace     = 30 * time.Second // 优雅关闭窗口;LLM/视觉转写长请求超过该时长会被截断
 )
 
 // Serve 启动 HTTP 服务并阻塞,直到出错或收到退出信号。

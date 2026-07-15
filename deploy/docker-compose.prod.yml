@@ -5,7 +5,7 @@
 # 拓扑(Traefik 已在服务器上运行,独占 80/443,回源网络 matrix-network):
 #   Traefik ──▶ admin(nginx :8084,SPA + /api 反代 workflow)   Host(${DIP_DOMAIN})
 #          └──▶ mcp(:8080,WorkBuddy 连接器)                    Host(${DIP_DOMAIN}) && PathPrefix(/mcp)
-#   其余服务(workflow/parser/ai/ocr/postgres/minio/redis)仅内部网络互通,不暴露。
+#   其余服务(workflow/parser/ai/postgres/minio/redis)仅内部网络互通,不暴露。
 #
 # 注意:
 #   - 项目名/容器名统一 phoenix 前缀。若服务器上仍有旧的同名 compose 项目(phoenix-backend 等),
@@ -59,16 +59,6 @@ services:
     restart: unless-stopped
     networks: [internal]
 
-  ocr:
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-ocr:${TAG:-latest}
-    container_name: phoenix-ocr
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-    volumes:
-      - paddlemodels:/root/.paddleocr
-    networks: [internal]
-
   parser:
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-parser:${TAG:-latest}
     container_name: phoenix-parser
@@ -87,6 +77,10 @@ services:
       PHX_LLM_ENDPOINT: ${PHX_LLM_ENDPOINT:-}
       PHX_LLM_API_KEY: ${PHX_LLM_API_KEY:-}
       PHX_LLM_MODEL: ${PHX_LLM_MODEL:-deepseek-chat}
+      # 视觉大模型(图片转写):留空则上传图片会在提取阶段明确报错
+      PHX_VISION_ENDPOINT: ${PHX_VISION_ENDPOINT:-}
+      PHX_VISION_API_KEY: ${PHX_VISION_API_KEY:-}
+      PHX_VISION_MODEL: ${PHX_VISION_MODEL:-qwen-vl-plus}
     networks: [internal]
 
   workflow:
@@ -104,7 +98,6 @@ services:
       PHX_MINIO_ENDPOINT: minio:9000
       PHX_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-phoenix}
       PHX_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      PHX_OCR_URL: http://ocr:8000
       PHX_PARSER_URL: http://parser:8082
       PHX_AI_URL: http://ai:8083
       PHX_ADMIN_PASSWORD: ${PHX_ADMIN_PASSWORD:?生产必须设置管理后台访问密码}
@@ -163,7 +156,6 @@ services:
 volumes:
   pgdata:
   miniodata:
-  paddlemodels:
 
 networks:
   internal: # 本项目内部互通

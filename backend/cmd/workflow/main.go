@@ -10,7 +10,6 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/clients"
 	"github.com/yuanyuexiang/phoenix/internal/config"
 	"github.com/yuanyuexiang/phoenix/internal/httpx"
-	"github.com/yuanyuexiang/phoenix/internal/ocr"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
@@ -53,7 +52,6 @@ func run() error {
 		Pipeline: &pipeline.Pipeline{
 			DB:              db,
 			Objects:         objects,
-			OCR:             ocr.New(cfg.OCRBaseURL),
 			Parser:          clients.NewParser(cfg.ParserBaseURL),
 			AI:              clients.NewAI(cfg.AIBaseURL),
 			Registry:        registry,
@@ -66,7 +64,6 @@ func run() error {
 		HealthTargets: []workflowapi.HealthTarget{ // 服务状态页(管理后台)聚合探测
 			{Name: "parser 文档解析", URL: cfg.ParserBaseURL + "/healthz"},
 			{Name: "ai 字段提取", URL: cfg.AIBaseURL + "/healthz"},
-			{Name: "ocr 识别", URL: cfg.OCRBaseURL + "/healthz"},
 		},
 	})
 
