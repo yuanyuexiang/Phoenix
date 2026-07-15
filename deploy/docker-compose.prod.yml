@@ -116,9 +116,11 @@ services:
       TZ: Asia/Shanghai
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?必须设置 Keycloak 管理员密码}
-      # 复用平台 Postgres;首次部署前需一次性建库(见 .env.prod.example 注释)
+      # 复用平台 Postgres;首次部署前需一次性建库(见 .env.prod.example 注释)。
+      # 主机名用容器名 phoenix-postgres 而非服务别名 postgres:keycloak 同时挂在共享的
+      # matrix-network 上,别的项目若也有 postgres 别名会被 DNS 解析到错误实例
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_URL: jdbc:postgresql://phoenix-postgres:5432/keycloak
       KC_DB_USERNAME: ${POSTGRES_USER:-phoenix}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
       # TLS 由 Traefik 终止;/auth 子路径复用主域名,无需新增 DNS
