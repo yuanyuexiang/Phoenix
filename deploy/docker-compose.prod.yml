@@ -179,6 +179,16 @@ services:
       - "traefik.http.routers.phoenix-mcp-oauth-meta.service=phoenix-mcp"
       - "traefik.http.routers.phoenix-mcp-oauth-meta.tls=true"
       - "traefik.http.routers.phoenix-mcp-oauth-meta.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
+      # 旧版规范(2025-03-26)的客户端直接在 MCP 域名根部取 AS 元数据,
+      # 302 引导到 Keycloak 的 discovery(否则落到 admin SPA 返回 HTML,客户端解析报错)
+      - "traefik.http.routers.phoenix-mcp-oauth-as.rule=Host(`phoenix.matrix-net.tech`) && (PathPrefix(`/.well-known/oauth-authorization-server`) || PathPrefix(`/.well-known/openid-configuration`))"
+      - "traefik.http.routers.phoenix-mcp-oauth-as.entrypoints=websecure"
+      - "traefik.http.routers.phoenix-mcp-oauth-as.service=phoenix-mcp"
+      - "traefik.http.routers.phoenix-mcp-oauth-as.tls=true"
+      - "traefik.http.routers.phoenix-mcp-oauth-as.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
+      - "traefik.http.routers.phoenix-mcp-oauth-as.middlewares=phoenix-as-redirect"
+      - "traefik.http.middlewares.phoenix-as-redirect.redirectregex.regex=.*"
+      - "traefik.http.middlewares.phoenix-as-redirect.redirectregex.replacement=https://phoenix.matrix-net.tech/auth/realms/phoenix/.well-known/openid-configuration"
 
   admin: # 前端管理后台(nginx 托管 SPA 并反代 /api 到 workflow),域名主入口
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-admin:${TAG:-latest}
