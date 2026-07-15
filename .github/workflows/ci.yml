@@ -92,6 +92,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # buildx 启动要从 Docker Hub 拉 buildkit 引导镜像,偶发 TLS 握手超时;
+      # 预拉取 + 退避重试,拉到本地后 setup-buildx 不再走网络
+      - name: 预拉取 buildx 引导镜像(带重试)
+        run: |
+          for i in 1 2 3 4 5; do
+            docker pull moby/buildkit:buildx-stable-1 && exit 0
+            echo "第 $i 次拉取失败,$((i*10))s 后重试…"; sleep $((i*10))
+          done
+          echo "多次重试后仍无法访问 Docker Hub"; exit 1
+
       - uses: docker/setup-buildx-action@v3
 
       - name: 登录镜像仓库
