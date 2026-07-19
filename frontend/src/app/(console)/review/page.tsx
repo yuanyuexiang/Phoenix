@@ -6,15 +6,7 @@ import { useSearchParams } from "next/navigation";
 import * as api from "@/lib/api";
 import type { Doc, DocType, Field } from "@/lib/types";
 import { DOCTYPE_SPECIAL } from "@/lib/types";
-import {
-  btnCls,
-  btnDangerCls,
-  btnPrimaryCls,
-  inputCls,
-  StatusBadge,
-  ToastProvider,
-  useToast,
-} from "@/components/ui";
+import { btnDangerCls, btnPrimaryCls, inputCls, StatusBadge, ToastProvider, useToast } from "@/components/ui";
 
 export default function ReviewPage() {
   return (
@@ -193,32 +185,38 @@ function ReviewView() {
 
             <div className="mt-4 flex flex-wrap gap-2">
               <button
-                className={btnCls}
-                onClick={() => act(() => api.validateDocument(current.id, reviewedFields(), current.doc_type), "校验完成")}
-              >
-                重新校验
-              </button>
-              <button
                 className={btnPrimaryCls}
                 onClick={() =>
-                  act(() => api.saveDocument(current.id, { fields: reviewedFields(), doc_type: current.doc_type }), "已入库")
+                  act(
+                    () => api.saveDocument(current.id, { fields: reviewedFields(), doc_type: current.doc_type }),
+                    current.status === "saved" ? "已保存更正" : "已入库",
+                  )
                 }
               >
-                审核通过并入库
+                {current.status === "saved" ? "保存更正" : "保存并入库"}
               </button>
-              <button
-                className={btnDangerCls}
-                onClick={() =>
-                  act(() => api.saveDocument(current.id, { fields: reviewedFields(), doc_type: current.doc_type, force: true }), "已强制入库")
-                }
-              >
-                强制入库
-              </button>
+              {(current.issues?.length ?? 0) > 0 && (
+                <button
+                  className={btnDangerCls}
+                  onClick={() =>
+                    act(
+                      () => api.saveDocument(current.id, { fields: reviewedFields(), doc_type: current.doc_type, force: true }),
+                      "已强制入库",
+                    )
+                  }
+                >
+                  强制入库(忽略校验问题)
+                </button>
+              )}
               <button className={`${btnDangerCls} ml-auto`} onClick={() => remove(current)}>
                 删除文档
               </button>
             </div>
-            <p className="mt-2 text-xs text-ink-300">人工修改过的字段,入库时置信度按 1.00 记录。</p>
+            <p className="mt-2 text-xs text-ink-300">
+              {current.status === "saved"
+                ? "本文档已入库。修改字段后「保存更正」即更新入库数据。"
+                : "「保存并入库」会先做规则校验:通过即入库(已入库);不通过会标记为待人工审核并列出问题,可修正后重试或强制入库。"}
+            </p>
           </div>
         )}
       </div>

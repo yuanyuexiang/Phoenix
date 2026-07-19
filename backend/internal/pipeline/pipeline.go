@@ -155,8 +155,10 @@ func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, co
 	if err != nil {
 		return nil, fmt.Errorf("文档 %s 不存在", id)
 	}
-	if doc.Status == model.StatusSaved {
-		return doc, nil // 幂等
+	// 已入库文档:不带任何更正内容的重复 save 幂等返回(WorkBuddy 重试安全);
+	// 带新字段/正文/类型则允许更正后重存(管理后台内联更正)。
+	if doc.Status == model.StatusSaved && len(fields) == 0 && contentText == "" && docType == "" {
+		return doc, nil
 	}
 	if docType != "" {
 		doc.DocType = docType
