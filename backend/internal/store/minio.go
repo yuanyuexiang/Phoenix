@@ -53,3 +53,8 @@ func (o *Objects) Get(ctx context.Context, key string) ([]byte, error) {
 	defer obj.Close()
 	return io.ReadAll(obj)
 }
+
+// Remove 删除归档文件(对象不存在时不报错)。
+func (o *Objects) Remove(ctx context.Context, key string) error {
+	return o.client.RemoveObject(ctx, o.bucket, key, minio.RemoveObjectOptions{})
+}

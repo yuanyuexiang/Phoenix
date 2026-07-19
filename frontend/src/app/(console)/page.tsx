@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import * as api from "@/lib/api";
 import type { Doc, DocType } from "@/lib/types";
 import { DOCTYPE_SPECIAL, STATUS_META } from "@/lib/types";
-import { btnCls, btnPrimaryCls, inputCls, PageHeader, StatusBadge, ToastProvider, useToast } from "@/components/ui";
+import { btnCls, inputCls, PageHeader, StatusBadge, ToastProvider, useToast } from "@/components/ui";
 
 export default function DocumentsPage() {
   return (
@@ -22,8 +22,6 @@ function DocumentsView() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({ doc_type: "", status: "", keyword: "" });
-  const [showUpload, setShowUpload] = useState(false);
-  const [upload, setUpload] = useState({ doc_type: "auto", filename: "test.txt", content: "" });
 
   const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), false);
 
@@ -50,70 +48,14 @@ function DocumentsView() {
     load();
   }, [load]);
 
-  const doUpload = async () => {
-    if (!upload.content.trim()) return toast("请粘贴文本内容", false);
-    try {
-      const doc = await api.uploadDocument(upload.doc_type, upload.filename || "test.txt", upload.content);
-      toast(`上传成功:${doc.id.slice(0, 8)}…`);
-      setUpload((u) => ({ ...u, content: "" }));
-      load();
-    } catch (e) {
-      fail(e);
-    }
-  };
-
   const typeTitle = (name: string) =>
     DOCTYPE_SPECIAL[name] ?? doctypes.find((t) => t.name === name)?.title ?? name;
 
   return (
     <>
-      <PageHeader
-        title="文档"
-        desc="已上传文档的处理进度与结果"
-        extra={
-          <button className={btnCls} onClick={() => setShowUpload((v) => !v)}>
-            {showUpload ? "收起上传" : "上传测试文档"}
-          </button>
-        }
-      />
+      <PageHeader title="文档" desc="WorkBuddy 处理的文档记录(上传与识别在 WorkBuddy 侧完成)" />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
-        {showUpload && (
-          <div className="mb-4 rounded-lg border border-surface-300 bg-surface-0 p-4 shadow-card">
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                className={inputCls}
-                value={upload.doc_type}
-                onChange={(e) => setUpload((u) => ({ ...u, doc_type: e.target.value }))}
-              >
-                <option value="auto">自动识别类型</option>
-                {doctypes.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.title} ({t.name})
-                  </option>
-                ))}
-              </select>
-              <input
-                className={inputCls}
-                style={{ width: 180 }}
-                value={upload.filename}
-                onChange={(e) => setUpload((u) => ({ ...u, filename: e.target.value }))}
-                placeholder="文件名"
-              />
-              <button className={btnPrimaryCls} onClick={doUpload}>
-                上传
-              </button>
-            </div>
-            <textarea
-              className={`${inputCls} mt-3 w-full font-mono text-xs`}
-              rows={5}
-              placeholder={"编号: XXX-001\n标题: ……\n(演示用;WorkBuddy 侧走 MCP 的 file_url 上传)"}
-              value={upload.content}
-              onChange={(e) => setUpload((u) => ({ ...u, content: e.target.value }))}
-            />
-          </div>
-        )}
-
         <div className="rounded-lg border border-surface-300 bg-surface-0 shadow-card">
           <div className="flex flex-wrap items-center gap-2 border-b border-surface-300 p-3">
             <select

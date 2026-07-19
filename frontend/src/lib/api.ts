@@ -32,9 +32,6 @@ export const listDocTypes = () => request<DocType[]>("/api/doctypes");
 export const queryDocuments = (params: Record<string, string>) =>
   request<QueryResult>("/api/documents?" + new URLSearchParams(params));
 
-export const uploadDocument = (docType: string, filename: string, contentText: string) =>
-  post<Doc>("/api/documents", { doc_type: docType, filename, content_text: contentText });
-
 // 对人工编辑后的字段做规则校验(后端不再抽取,字段由人工/WorkBuddy 提供)。
 export const validateDocument = (id: string, fields: Field[], docType?: string) =>
   post<Doc>(`/api/documents/${id}/validate`, { fields, doc_type: docType });
@@ -43,5 +40,9 @@ export const saveDocument = (
   id: string,
   body: { fields?: Field[]; content_text?: string; doc_type?: string; force?: boolean },
 ) => post<Doc>(`/api/documents/${id}/save`, body);
+
+// 删除文档:结构化数据 + 知识库切片 + 归档原件一并清除。
+export const deleteDocument = (id: string) =>
+  request<{ ok: boolean }>(`/api/documents/${id}`, { method: "DELETE" });
 
 export const fetchStatus = () => request<{ components: Component[] }>("/api/status");

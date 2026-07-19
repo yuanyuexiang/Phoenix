@@ -5,7 +5,9 @@
 //	POST /api/documents/{id}/extract   返回该类型要抽的字段清单(WorkBuddy 据此识别)
 //	POST /api/documents/{id}/validate  对回传字段做 schema 校验
 //	POST /api/documents/{id}/save      落字段+正文并入库(WorkBuddy 已识别完成)
-//	GET  /api/documents                查询(doc_type/status/keyword/uploaded_by/limit)
+//	GET    /api/documents              查询(doc_type/status/keyword/uploaded_by/field_filters/limit)
+//	DELETE /api/documents/{id}         删除文档(结构化+知识库切片+归档原件;管理后台用)
+//	POST /api/ask                      知识库语义问答
 //	GET  /api/doctypes                 单据类型配置(管理后台用)
 //	GET  /api/status                   组件健康聚合(服务状态页用)
 //	GET  /api/auth/status|check        鉴权探测(开放)
@@ -65,6 +67,7 @@ func NewHandler(opts Options) http.Handler {
 	mux.HandleFunc("POST /api/documents/{id}/validate", s.validate)
 	mux.HandleFunc("POST /api/documents/{id}/save", s.save)
 	mux.HandleFunc("GET /api/documents", s.query)
+	mux.HandleFunc("DELETE /api/documents/{id}", s.delete)
 	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("GET /api/doctypes", s.doctypes)
 	mux.HandleFunc("GET /api/status", s.status)
@@ -245,6 +248,17 @@ func (s *server) query(w http.ResponseWriter, r *http.Request) {
 		out.Documents = append(out.Documents, api.ToView(d))
 	}
 	writeJSON(w, out)
+}
+
+// delete 删除文档:结构化行 + 知识库切片 + 归档原件(管理后台用,已过 X-Access-Key 鉴权)。
+func (s *server) delete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.opts.Pipeline.Delete(r.Context(), id); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	s.audit(r, "delete", id, nil)
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 // ask 知识库语义问答:返回相关正文片段与来源文档,供 WorkBuddy 据此作答。

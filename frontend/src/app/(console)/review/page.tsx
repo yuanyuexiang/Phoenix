@@ -90,6 +90,18 @@ function ReviewView() {
     }
   };
 
+  const remove = async (doc: Doc) => {
+    if (!window.confirm(`确认删除「${doc.filename}」?将一并清除结构化数据、知识库切片与归档原件,不可恢复。`)) return;
+    try {
+      await api.deleteDocument(doc.id);
+      setDocs((list) => list.filter((d) => d.id !== doc.id));
+      setCurrentID(null);
+      toast("已删除");
+    } catch (e) {
+      fail(e);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* 中列:文档队列 */}
@@ -201,6 +213,9 @@ function ReviewView() {
                 }
               >
                 强制入库
+              </button>
+              <button className={`${btnDangerCls} ml-auto`} onClick={() => remove(current)}>
+                删除文档
               </button>
             </div>
             <p className="mt-2 text-xs text-ink-300">人工修改过的字段,入库时置信度按 1.00 记录。</p>

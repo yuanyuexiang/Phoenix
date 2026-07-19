@@ -222,6 +222,26 @@ func (p *Pipeline) Query(ctx context.Context, f store.QueryFilter) ([]*model.Doc
 	return p.DB.QueryDocuments(ctx, f)
 }
 
+// Delete 删除一份文档:结构化行 + 知识库切片(级联)+ MinIO 归档原件。
+// 仅供管理后台使用(不暴露给 WorkBuddy)。
+func (p *Pipeline) Delete(ctx context.Context, id string) error {
+	doc, err := p.DB.GetDocument(ctx, id)
+	if err != nil {
+		return fmt.Errorf("文档 %s 不存在", id)
+	}
+	// 先删数据库行(级联清 document_chunks),再 best-effort 删归档对象——
+	// 对象删失败只是残留孤儿文件,不会造成"行指向不存在文件"的坏引用。
+	if err := p.DB.DeleteDocument(ctx, id); err != nil {
+		return fmt.Errorf("删除文档记录失败: %w", err)
+	}
+	if doc.ObjectKey != "" {
+		if err := p.Objects.Remove(ctx, doc.ObjectKey); err != nil {
+			slog.Warn("删除归档文件失败(孤儿对象可后续清理)", "document_id", id, "object_key", doc.ObjectKey, "error", err)
+		}
+	}
+	return nil
+}
+
 // Ask 实现 ask_document:把问题向量化后做语义检索,返回相关正文片段与来源文档。
 func (p *Pipeline) Ask(ctx context.Context, question string, limit int, docType string) ([]store.ChunkHit, error) {
 	if p.Embedder == nil {

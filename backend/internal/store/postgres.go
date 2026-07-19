@@ -101,6 +101,12 @@ func (db *DB) UpdateDocument(ctx context.Context, d *model.Document) error {
 	return err
 }
 
+// DeleteDocument 删除文档行(document_chunks 经外键 ON DELETE CASCADE 一并删除)。
+func (db *DB) DeleteDocument(ctx context.Context, id string) error {
+	_, err := db.pool.Exec(ctx, `DELETE FROM documents WHERE id = $1`, id)
+	return err
+}
+
 // GetDocument 按 ID 取文档;不存在时返回 pgx.ErrNoRows。
 func (db *DB) GetDocument(ctx context.Context, id string) (*model.Document, error) {
 	row := db.pool.QueryRow(ctx, `
