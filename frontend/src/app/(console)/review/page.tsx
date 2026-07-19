@@ -155,7 +155,7 @@ function ReviewView() {
                   {(current.fields ?? []).length === 0 && (
                     <tr>
                       <td colSpan={3} className="px-4 py-8 text-center text-ink-300">
-                        尚未提取字段 —— 点击下方「重新提取」
+                        暂无字段(字段由 WorkBuddy 识别后回传)
                       </td>
                     </tr>
                   )}
@@ -180,21 +180,25 @@ function ReviewView() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <button className={btnCls} onClick={() => act(() => api.extractDocument(current.id), "提取完成")}>
-                重新提取
-              </button>
-              <button className={btnCls} onClick={() => act(() => api.validateDocument(current.id), "校验完成")}>
+              <button
+                className={btnCls}
+                onClick={() => act(() => api.validateDocument(current.id, reviewedFields(), current.doc_type), "校验完成")}
+              >
                 重新校验
               </button>
               <button
                 className={btnPrimaryCls}
-                onClick={() => act(() => api.saveDocument(current.id, { fields: reviewedFields() }), "已入库")}
+                onClick={() =>
+                  act(() => api.saveDocument(current.id, { fields: reviewedFields(), doc_type: current.doc_type }), "已入库")
+                }
               >
                 审核通过并入库
               </button>
               <button
                 className={btnDangerCls}
-                onClick={() => act(() => api.saveDocument(current.id, { force: true }), "已强制入库")}
+                onClick={() =>
+                  act(() => api.saveDocument(current.id, { fields: reviewedFields(), doc_type: current.doc_type, force: true }), "已强制入库")
+                }
               >
                 强制入库
               </button>

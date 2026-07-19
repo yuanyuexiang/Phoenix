@@ -36,7 +36,9 @@ func Run(fields []model.Field, dt *schema.DocType, minConfidence float64) (model
 		if len(spec.Rule.Enum) > 0 && !slices.Contains(spec.Rule.Enum, f.Value) {
 			issues = append(issues, issue(spec, "enum", fmt.Sprintf("值 %q 不在允许范围 %v 内", f.Value, spec.Rule.Enum)))
 		}
-		if f.Confidence < minConfidence {
+		// 置信度=0 视为"未提供"(WorkBuddy 回传字段通常不带自评置信度),跳过该维度;
+		// 仅当客户端明确回传了置信度才按阈值卡。
+		if f.Confidence > 0 && f.Confidence < minConfidence {
 			issues = append(issues, issue(spec, "confidence", fmt.Sprintf("置信度 %.2f 低于阈值 %.2f", f.Confidence, minConfidence)))
 		}
 	}

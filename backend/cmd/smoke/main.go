@@ -15,7 +15,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -23,7 +22,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -32,7 +30,7 @@ import (
 func main() {
 	addr := flag.String("addr", "http://localhost:8080/mcp", "Phoenix MCP 端点")
 	sample := flag.String("sample", "samples/sample-generic.txt", "样例文档路径")
-	image := flag.String("image", "", "图片样例路径(非空时追加图片转写用例,需 ai 服务已配置 PHX_VISION_*)")
+	rag := flag.Bool("rag", false, "追加 ask_document 语义问答用例(workflow 须已配置 PHX_EMBED_*)")
 	token := flag.String("token", "", "现成的 access token(优先于 -oauth-* 取 token)")
 	oauthIssuer := flag.String("oauth-issuer", "", "授权服务器 issuer,设置后用 password grant 取 token")
 	oauthClient := flag.String("oauth-client", "phoenix-smoke", "OAuth 客户端 ID(须开 Direct Access Grant)")
@@ -100,6 +98,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// 1. 上传归档(WorkBuddy 把原件传给平台留存)
 	up := call(ctx, session, "upload_document", map[string]any{
 		"doc_type":     "generic",
 		"filename":     "sample-generic.txt",
@@ -107,7 +106,7 @@ func main() {
 	})
 	id := up["id"].(string)
 
-	// 身份落库断言:带 token 时 uploaded_by 应为登录用户,匿名(off/optional 无 token)时不为空即算后台
+	// 身份落库断言:带 token 时 uploaded_by 应为登录用户
 	if *token != "" && *oauthUser != "" {
 		if up["uploaded_by"] != *oauthUser {
 			log.Fatalf("uploaded_by 应为 %q,得到 %v", *oauthUser, up["uploaded_by"])
@@ -115,51 +114,101 @@ func main() {
 		fmt.Printf("\n✅ 身份落库:uploaded_by = %s\n", *oauthUser)
 	}
 
-	call(ctx, session, "extract_fields", map[string]any{"document_id": id})
-	call(ctx, session, "validate_document", map[string]any{"document_id": id})
-	call(ctx, session, "save_database", map[string]any{"document_id": id})
-	q := map[string]any{"keyword": "采购项目", "limit": 5}
-	if *token != "" && *oauthUser != "" {
-		q["uploaded_by"] = *oauthUser // 顺带覆盖按人查询入参
+	// 2. 取字段清单(后端下发抽取指令,不识别)
+	brief := call(ctx, session, "extract_fields", map[string]any{"document_id": id})
+	if bf, _ := brief["fields"].([]any); len(bf) == 0 {
+		log.Fatalf("extract_fields 应返回字段清单,得到 %v", brief)
 	}
-	call(ctx, session, "query_document", q)
+	fmt.Println("  ✓ extract_fields 返回字段清单")
 
-	// 自动分类:不传 doc_type,提取阶段应识别为 generic(样例含其全部字段标签)
-	upAuto := call(ctx, session, "upload_document", map[string]any{
-		"filename":     "auto-sample.txt",
+	// 3. 模拟 WorkBuddy 已识别:抽好的字段 + 转写的正文
+	fields := []map[string]any{
+		{"name": "doc_no", "value": "PHX-2026-0001"},
+		{"name": "title", "value": "企业文档处理平台采购项目"},
+		{"name": "amount", "value": "128,000.00"},
+		{"name": "issue_date", "value": "2026年7月1日"},
+		{"name": "party_a", "value": "某某科技有限公司"},
+		{"name": "party_b", "value": "凤凰软件服务有限公司"},
+	}
+
+	// 4. 预校验(应通过)
+	vres := call(ctx, session, "validate_document", map[string]any{
+		"document_id": id, "fields": fields, "doc_type": "generic",
+	})
+	if vres["status"] != "validated" {
+		log.Fatalf("validate_document 应为 validated,得到 %v(issues=%v)", vres["status"], vres["issues"])
+	}
+	fmt.Println("  ✓ validate_document = validated")
+
+	// 5. 入库(带正文,应 saved)
+	sres := call(ctx, session, "save_database", map[string]any{
+		"document_id": id, "fields": fields, "doc_type": "generic",
 		"content_text": string(content),
 	})
-	autoID := upAuto["id"].(string)
-	if upAuto["doc_type"] != "auto" {
-		log.Fatalf("未指定类型时应为 auto,得到 %v", upAuto["doc_type"])
+	if sres["status"] != "saved" {
+		log.Fatalf("save_database 应为 saved,得到 %v", sres["status"])
 	}
-	exAuto := call(ctx, session, "extract_fields", map[string]any{"document_id": autoID})
-	if exAuto["doc_type"] != "generic" {
-		log.Fatalf("自动分类应识别为 generic,得到 %v", exAuto["doc_type"])
-	}
-	fmt.Println("\n✅ 自动分类:auto → generic 识别正确")
+	fmt.Println("  ✓ save_database = saved")
 
-	// 图片转写:上传图片 → 视觉大模型转写 → 提取 → 校验(-image 指定时执行)
-	if *image != "" {
-		img, err := os.ReadFile(*image)
-		if err != nil {
-			log.Fatal(err)
-		}
-		upImg := call(ctx, session, "upload_document", map[string]any{
-			"doc_type":       "generic",
-			"filename":       filepath.Base(*image),
-			"content_base64": base64.StdEncoding.EncodeToString(img),
+	// 6. 按关键词查询(命中证明正文已落库)
+	q := map[string]any{"keyword": "采购项目", "limit": 5}
+	if *token != "" && *oauthUser != "" {
+		q["uploaded_by"] = *oauthUser
+	}
+	qres := call(ctx, session, "query_document", q)
+	if total, _ := qres["total"].(float64); total < 1 {
+		log.Fatalf("query_document 应命中已入库文档,得到 total=%v", qres["total"])
+	}
+	fmt.Println("  ✓ query_document 命中(正文已落库)")
+
+	// 7. 字段级过滤:金额 > 10000(数值比较,自动去千分位逗号)+ 甲方包含「科技」
+	fres := call(ctx, session, "query_document", map[string]any{
+		"doc_type": "generic",
+		"field_filters": []map[string]any{
+			{"field": "amount", "op": "gt", "value": "10000"},
+			{"field": "party_a", "op": "contains", "value": "科技"},
+		},
+	})
+	if total, _ := fres["total"].(float64); total < 1 {
+		log.Fatalf("字段过滤(金额>10000 且甲方含科技)应命中,得到 total=%v", fres["total"])
+	}
+	fmt.Println("  ✓ query_document 字段级过滤命中(金额>10000 且甲方含「科技」)")
+
+	// 反向:金额 > 999999 应查不到
+	nres := call(ctx, session, "query_document", map[string]any{
+		"doc_type":      "generic",
+		"field_filters": []map[string]any{{"field": "amount", "op": "gt", "value": "999999"}},
+	})
+	if total, _ := nres["total"].(float64); total != 0 {
+		log.Fatalf("金额>999999 应无命中,得到 total=%v", nres["total"])
+	}
+	fmt.Println("  ✓ query_document 字段级过滤反向验证(金额>999999 无命中)")
+
+	// 8. 知识库语义问答(-rag,workflow 须配置 PHX_EMBED_*;save 时已把正文切片+向量入库)
+	if *rag {
+		ares := call(ctx, session, "ask_document", map[string]any{
+			"question": "这个采购项目的金额是多少?", "limit": 3,
 		})
-		imgID := upImg["id"].(string)
-		exImg := call(ctx, session, "extract_fields", map[string]any{"document_id": imgID})
-		if fields, _ := exImg["fields"].([]any); len(fields) == 0 {
-			log.Fatalf("图片转写后应提取出字段,得到 %v", exImg["fields"])
+		total, _ := ares["total"].(float64)
+		if total < 1 {
+			log.Fatalf("ask_document 应命中知识库片段,得到 total=%v", ares["total"])
 		}
-		call(ctx, session, "validate_document", map[string]any{"document_id": imgID})
-		fmt.Println("\n✅ 图片转写:上传 → 视觉转写 → 提取 → 校验跑通")
+		chunks, _ := ares["chunks"].([]any)
+		first, _ := chunks[0].(map[string]any)
+		if !strings.Contains(fmt.Sprint(first["content"]), "采购项目") {
+			log.Fatalf("ask_document 命中片段应含正文,得到 %v", first["content"])
+		}
+		fmt.Printf("  ✓ ask_document 语义问答命中(来源 %v,score=%.3f)\n", first["filename"], first["score"])
 	}
 
-	fmt.Println("✅ 五个工具全部调用成功,流水线端到端跑通")
+	fmt.Println("\n✅ 全流程跑通:WorkBuddy 驱动写入/校验 + 结构化查询(含字段级过滤)" + ragTip(*rag))
+}
+
+func ragTip(rag bool) string {
+	if rag {
+		return " + 知识库语义问答"
+	}
+	return ""
 }
 
 /* ---------- OAuth ---------- */

@@ -20,23 +20,17 @@ type Config struct {
 	MinioBucket    string
 	MinioUseSSL    bool
 
-	ParserBaseURL   string // 文档解析服务地址
-	AIBaseURL       string // AI 字段提取/图片转写服务地址
 	WorkflowBaseURL string // 工作流引擎地址(mcp/admin 使用)
 
-	// LLM 为空则使用 Mock 提取器。
-	LLMEndpoint string
-	LLMAPIKey   string
-	LLMModel    string
+	MinConfidence float64 // 字段置信度低于该值转人工审核(仅当客户端回传了置信度)
 
-	// Vision 为空则图片转写未启用(上传图片会在提取阶段明确报错)。
-	// 任何 OpenAI 兼容视觉端点均可,基准为阿里 DashScope 兼容模式。
-	VisionEndpoint string // 如 https://dashscope.aliyuncs.com/compatible-mode/v1
-	VisionAPIKey   string
-	VisionModel    string
-
-	MinConfidence   float64 // 字段置信度低于该值转人工审核
-	ClassifyMinConf float64 // 自动分类置信度低于该值走开放提取兜底
+	// RAG 知识库 embedding(检索索引用途)。Endpoint 为空则知识库关闭:
+	// save 不入向量,ask_document 返回"未启用"。任何 OpenAI 兼容 embeddings 端点均可。
+	// EmbedDim 须与 store 迁移里的 vector(N) 一致(当前 1024);换维度需新迁移。
+	EmbedEndpoint string // 如 https://dashscope.aliyuncs.com/compatible-mode/v1
+	EmbedAPIKey   string
+	EmbedModel    string
+	EmbedDim      int
 
 	// AdminPassword 是管理后台 / workflow API 的访问密钥(请求头 X-Access-Key)。
 	// 置空则关闭鉴权(仅建议本机联调);mcp 服务用同一配置调用 workflow。
@@ -66,21 +60,14 @@ func Load() Config {
 		MinioBucket:    env("PHX_MINIO_BUCKET", "documents"),
 		MinioUseSSL:    envBool("PHX_MINIO_USE_SSL", false),
 
-		ParserBaseURL:   env("PHX_PARSER_URL", "http://localhost:8082"),
-		AIBaseURL:       env("PHX_AI_URL", "http://localhost:8083"),
 		WorkflowBaseURL: env("PHX_WORKFLOW_URL", "http://localhost:8081"),
 
-		LLMEndpoint: env("PHX_LLM_ENDPOINT", ""),
-		LLMAPIKey:   env("PHX_LLM_API_KEY", ""),
-		LLMModel:    env("PHX_LLM_MODEL", "deepseek-chat"),
+		MinConfidence: envFloat("PHX_MIN_CONFIDENCE", 0.8),
 
-		// 默认 qwen-vl-plus:实测 qwen-vl-ocr 不遵循转写指令(强制表格+代码围栏)
-		VisionEndpoint: env("PHX_VISION_ENDPOINT", ""),
-		VisionAPIKey:   env("PHX_VISION_API_KEY", ""),
-		VisionModel:    env("PHX_VISION_MODEL", "qwen-vl-plus"),
-
-		MinConfidence:   envFloat("PHX_MIN_CONFIDENCE", 0.8),
-		ClassifyMinConf: envFloat("PHX_CLASSIFY_MIN_CONF", 0.5),
+		EmbedEndpoint: env("PHX_EMBED_ENDPOINT", ""),
+		EmbedAPIKey:   env("PHX_EMBED_API_KEY", ""),
+		EmbedModel:    env("PHX_EMBED_MODEL", "text-embedding-v3"),
+		EmbedDim:      envInt("PHX_EMBED_DIM", 1024),
 
 		AdminPassword: env("PHX_ADMIN_PASSWORD", "phoenix123"), // 默认密码,生产环境务必修改
 
@@ -113,6 +100,15 @@ func envFloat(key string, def float64) float64 {
 	if v := os.Getenv(key); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
+		}
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
 		}
 	}
 	return def

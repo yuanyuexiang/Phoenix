@@ -1,5 +1,5 @@
 # ---- Go 后端(backend/)----
-.PHONY: build test vet tidy run-workflow run-parser run-ai run-mcp run-all smoke
+.PHONY: build test vet tidy run-workflow run-mcp run-all smoke
 build:
 	cd backend && go build ./...
 
@@ -15,27 +15,23 @@ tidy:
 run-workflow:
 	cd backend && go run ./cmd/workflow
 
-run-parser:
-	cd backend && go run ./cmd/parser
-
-run-ai:
-	cd backend && go run ./cmd/ai
-
 run-mcp:
 	cd backend && go run ./cmd/mcp
 
-# 前台并行起全部 Go 服务(Ctrl-C 全停,开发用);前端另起:make fe-dev
+# 前台并行起后端 Go 服务(Ctrl-C 全停,开发用);前端另起:make fe-dev
 run-all:
 	@trap 'kill 0' INT TERM; \
-	(cd backend && go run ./cmd/parser) & \
-	(cd backend && go run ./cmd/ai) & \
 	(cd backend && go run ./cmd/workflow) & \
 	(cd backend && go run ./cmd/mcp) & \
 	wait
 
-# 端到端冒烟:模拟 WorkBuddy 依次调用五个 MCP 工具
+# 端到端冒烟:模拟 WorkBuddy 上传归档 → 回传字段+正文入库 → 结构化查询(含字段级过滤)
 smoke:
 	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt
+
+# 含知识库语义问答的冒烟:workflow 须已配置 PHX_EMBED_*(embedding 端点)
+smoke-rag:
+	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt -rag
 
 # ---- MCP OAuth 联调(docs/MCP-OAuth鉴权方案.md)----
 .PHONY: oauth-up oauth-down smoke-oauth
@@ -50,10 +46,6 @@ oauth-down:
 smoke-oauth:
 	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt \
 		-oauth-issuer http://localhost:8180/realms/phoenix -oauth-user alice -oauth-pass alice123 -require-auth
-
-# 图片转写冒烟:ai 服务须已配置 PHX_VISION_*(视觉大模型)
-smoke-vision:
-	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt -image ../samples/sample-generic.png
 
 # ---- 前端(frontend/,Next.js)----
 .PHONY: fe-install fe-dev fe-build
@@ -74,7 +66,7 @@ infra-up:
 infra-down:
 	docker compose -f deploy/docker-compose.yml down
 
-# 全套容器化(五个应用服务 + 基础设施)
+# 全套容器化(mcp/workflow/admin + 基础设施)
 compose-up:
 	docker compose -f deploy/docker-compose.yml up -d --build
 

@@ -109,14 +109,26 @@ func (db *DB) GetDocument(ctx context.Context, id string) (*model.Document, erro
 	return scanDocument(row)
 }
 
+// FieldFilter 是对提取字段(fields JSONB)的精确/比较过滤(如「金额>10000」「甲方 包含 某公司」)。
+type FieldFilter struct {
+	Field  string   `json:"field"`            // 字段 name(与 doctype schema 一致)
+	Op     string   `json:"op"`               // eq|ne|contains|gt|gte|lt|lte|in
+	Value  string   `json:"value,omitempty"`  // 单值(eq/ne/contains/gt/gte/lt/lte);数值比较时按数值解释(自动去千分位逗号)
+	Values []string `json:"values,omitempty"` // in 的候选值
+}
+
 // QueryFilter 是 query_document 的查询条件,零值字段不参与过滤。
 type QueryFilter struct {
-	DocType    string
-	Status     string
-	Keyword    string // 匹配文件名或正文
-	UploadedBy string // 按上传人精确匹配
-	Limit      int
+	DocType      string
+	Status       string
+	Keyword      string // 匹配文件名或正文
+	UploadedBy   string // 按上传人精确匹配
+	FieldFilters []FieldFilter
+	Limit        int
 }
+
+// numericOps 需要把字符串字段值当数值比较(去逗号 + 正则守卫防 cast 失败)。
+var numericOps = map[string]string{"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 
 // QueryDocuments 按条件查询,按创建时间倒序。
 func (db *DB) QueryDocuments(ctx context.Context, f QueryFilter) ([]*model.Document, error) {
@@ -137,6 +149,13 @@ func (db *DB) QueryDocuments(ctx context.Context, f QueryFilter) ([]*model.Docum
 	}
 	if f.UploadedBy != "" {
 		add("uploaded_by = $%d", f.UploadedBy)
+	}
+	for _, ff := range f.FieldFilters {
+		cond, err := fieldFilterCond(ff, &args)
+		if err != nil {
+			return nil, err
+		}
+		conds = append(conds, cond)
 	}
 	where := ""
 	if len(conds) > 0 {
@@ -165,6 +184,53 @@ func (db *DB) QueryDocuments(ctx context.Context, f QueryFilter) ([]*model.Docum
 		docs = append(docs, d)
 	}
 	return docs, rows.Err()
+}
+
+// fieldFilterCond 把一个 FieldFilter 编译成对 fields JSONB 的 EXISTS 子查询条件,
+// 并把参数追加到 args。fields 是 [{name,value,confidence},...],这里对匹配 name 的元素
+// 按 op 比较其 value。数值比较自动去千分位逗号,并用正则守卫防止非数值 value 触发 cast 报错。
+func fieldFilterCond(ff FieldFilter, args *[]any) (string, error) {
+	if ff.Field == "" {
+		return "", fmt.Errorf("field_filter: field 不能为空")
+	}
+	*args = append(*args, ff.Field)
+	nameP := len(*args)
+
+	// EXISTS (SELECT 1 FROM jsonb_array_elements(fields) fe WHERE fe->>'name' = $name AND <pred>)
+	wrap := func(pred string) string {
+		return fmt.Sprintf("EXISTS (SELECT 1 FROM jsonb_array_elements(fields) fe WHERE fe->>'name' = $%d AND %s)", nameP, pred)
+	}
+
+	switch ff.Op {
+	case "eq":
+		*args = append(*args, ff.Value)
+		return wrap(fmt.Sprintf("fe->>'value' = $%d", len(*args))), nil
+	case "ne":
+		*args = append(*args, ff.Value)
+		return wrap(fmt.Sprintf("fe->>'value' <> $%d", len(*args))), nil
+	case "contains":
+		*args = append(*args, "%"+ff.Value+"%")
+		return wrap(fmt.Sprintf("fe->>'value' ILIKE $%d", len(*args))), nil
+	case "in":
+		if len(ff.Values) == 0 {
+			return "", fmt.Errorf("field_filter: op=in 需要 values")
+		}
+		*args = append(*args, ff.Values)
+		return wrap(fmt.Sprintf("fe->>'value' = ANY($%d)", len(*args))), nil
+	default:
+		op, ok := numericOps[ff.Op]
+		if !ok {
+			return "", fmt.Errorf("field_filter: 不支持的 op %q", ff.Op)
+		}
+		num := strings.ReplaceAll(ff.Value, ",", "")
+		*args = append(*args, num)
+		valP := len(*args)
+		// 去逗号后用正则确认是数值再 cast,否则该元素跳过(不参与比较)
+		pred := fmt.Sprintf(
+			"replace(fe->>'value', ',', '') ~ '^-?[0-9]+(\\.[0-9]+)?$' AND replace(fe->>'value', ',', '')::numeric %s $%d::numeric",
+			op, valP)
+		return wrap(pred), nil
+	}
 }
 
 // AuditEntry 是一条审计日志(谁在何时对哪份文档做了什么)。

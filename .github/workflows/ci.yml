@@ -1,5 +1,5 @@
 # CI/CD 一体化流水线(测试阶段策略):
-#   push master / 手动触发 → 测试 → 构建推送 5 镜像 → SSH 部署 → 健康检查
+#   push master / 手动触发 → 测试 → 构建推送 3 镜像(workflow/mcp/admin)→ SSH 部署 → 健康检查
 #   pull_request           → 只跑测试,不构建不部署
 #
 # 转入正式运营后,建议把 build-push/deploy 的触发改回打 v* 标签(见 git 历史中的
@@ -83,10 +83,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Go 四服务共用 backend/Dockerfile,SERVICE 参数区分
+          # Go 两服务共用 backend/Dockerfile,SERVICE 参数区分
           - { name: workflow, context: backend, build_args: "SERVICE=workflow" }
-          - { name: parser, context: backend, build_args: "SERVICE=parser" }
-          - { name: ai, context: backend, build_args: "SERVICE=ai" }
           - { name: mcp, context: backend, build_args: "SERVICE=mcp" }
           - { name: admin, context: frontend, build_args: "" }
     steps:

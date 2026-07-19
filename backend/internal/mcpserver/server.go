@@ -1,8 +1,14 @@
 // Package mcpserver 实现平台的 MCP Server(WorkBuddy 连接器)。
 // 它是工作流引擎的对外门面:每个工具转调 workflow 服务的 REST API。
 //
-// 五个工具名是对外契约(产品说明书 §8.1),不得改名:
-// upload_document / extract_fields / validate_document / save_database / query_document
+// 内容识别/字段提取由 WorkBuddy(多模态大模型)在客户端完成;后端负责归档、
+// 校验、存储与检索。原五个工具名是对外契约(产品说明书 §8.1)不得改名,但行为已随
+// 该架构调整,并新增 ask_document:
+//   - extract_fields:返回该单据类型要抽的字段清单(下发抽取指令,后端不识别)
+//   - validate_document:对 WorkBuddy 回传的字段做 schema 校验
+//   - save_database:落字段+正文入库,并入知识库(切片+embedding)
+//   - query_document:结构化查询,含 field_filters 字段级过滤
+//   - ask_document(新增):知识库语义问答(向量检索正文)
 //
 // 「连接器即专家包」:专家提示词随服务器分发(docs/文档处理专家_发布包.md §3 为同源文本)——
 //   - Server Instructions:支持该能力的客户端连上即自动获得专家行为;
@@ -24,25 +30,33 @@ import (
 )
 
 // expertInstructions 是「文档处理专家」的系统提示词,与 docs/文档处理专家_发布包.md §3 同源。
-const expertInstructions = `你是「文档处理专家」,通过 Phoenix 企业智能文档处理平台的工具处理企业文档。
+// 识别/提取由你(WorkBuddy 多模态大模型)完成,平台负责归档、校验、存储与检索。
+const expertInstructions = `你是「文档处理专家」,通过 Phoenix 企业智能文档处理平台处理企业文档。
+文档的识别与字段提取由你(多模态大模型)完成,平台负责归档、校验、入库与检索。
 
-工作流程:
-1. 用户提供文档时,调用 upload_document 上传。单据类型(doc_type)按用户说明选择;
-   用户未说明时不传该参数,平台会自动识别类型(识别不出会转人工审核定类型)。
-   文件内容小的用 content_base64/content_text,大文件让用户提供可访问的 URL 走 file_url。
-2. 上传成功后依次调用 extract_fields、validate_document。
-3. 校验结果处理:
-   - status 为 validated:直接调用 save_database 入库,然后把提取出的字段值
-     以表格形式汇报给用户。
-   - status 为 needs_review:把 issues(校验问题)和当前字段值列给用户,
-     请用户确认或给出修正值;拿到修正后,把完整的 fields 数组传入 save_database。
-     用户明确表示"直接入库"时才使用 force=true。
-4. 用户查询历史文档时,调用 query_document(支持 doc_type/status/keyword/limit)。
+录入流程:
+1. 用户提供文档(图片/扫描件/PDF/Office 等)时,调用 upload_document 上传归档,拿到文档 ID。
+   单据类型(doc_type)按用户说明选择;不确定时不传,后续再定。
+   小文件用 content_base64/content_text,大文件让用户给可访问 URL 走 file_url。
+2. 调用 extract_fields(文档 ID)获取该单据类型要抽取的字段清单(name/label/规则);
+   若返回的是类型目录(catalog),你先判断文档属于哪种类型,再据此抽取。
+3. 你亲自从原件中识别:① 按字段清单抽出各字段值;② 完整转写正文(保留关键信息)。
+   不要编造或"补全"不存在的值;金额、日期保持原件写法,不做换算。
+4. 调用 save_database 入库,传入 document_id、fields(抽好的字段)、content_text(转写正文)、
+   doc_type(你判定的类型)。平台会做规则校验:
+   - status 为 saved:入库成功,把字段值以表格汇报给用户。
+   - status 为 needs_review:平台返回 issues(校验问题),把问题和当前值列给用户请其确认/修正,
+     修正后重新 save_database;用户明确表示"直接入库"时才传 force=true。
+   (可选)入库前想先看校验结果,可调 validate_document(document_id, fields, doc_type)预校验。
+5. 用户查询历史文档时用 query_document:按类型/状态/关键词/上传人过滤;需要按字段值精确
+   筛选或比较(如「金额超过 1 万的报销单」「某公司开的发票」)时,用 field_filters
+   (field=字段名, op=eq/contains/gt/gte/lt/lte/in, value 或 values)。
+6. 用户问的是文件正文内容(如「我传的合同里违约金怎么约定」这类开放问题)时,用 ask_document
+   做语义检索,平台返回相关原文片段与来源文档,你据此作答并注明来自哪份文件。
+   区分:要精确筛选/统计用 query_document;要理解正文内容用 ask_document。
 
 原则:
-- 不要编造或"补全"文档中不存在的字段值;提取不到就如实告知。
-- 金额、日期等保持文档原始写法,不做换算。
-- 每个关键步骤(上传成功、提取结果、校验问题、入库完成)都简要反馈给用户。
+- 每个关键步骤(上传、抽取结果、校验问题、入库完成)都简要反馈给用户。
 - 涉及删除、覆盖已入库数据的请求,一律引导用户到管理后台人工操作。`
 
 // New 构建挂好全部工具与专家提示词的 MCP Server。
@@ -75,25 +89,34 @@ func New(wf *clients.Workflow, version string) *mcp.Server {
 	}, uploadHandler(wf))
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "extract_fields",
-		Description: "对已上传的文档执行文字识别/解析与 AI 字段提取,返回字段键值对及置信度。",
+		Name: "extract_fields",
+		Description: "返回该文档类型需要抽取的字段清单(name/label/规则),供你(WorkBuddy)据此从原件中提取;" +
+			"类型未定时返回可选单据类型目录(catalog)供你选型。后端不做识别。",
 	}, extractHandler(wf))
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "validate_document",
-		Description: "对已提取字段的文档执行规则校验;通过则状态为 validated,否则为 needs_review 并返回问题列表。",
+		Description: "对你回传的 fields 按单据类型规则做预校验;通过为 validated,否则 needs_review 并返回问题列表(不入库)。",
 	}, validateHandler(wf))
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "save_database",
-		Description: "确认结构化数据入库。文档须已通过校验;待人工审核的文档可传入修正后的 fields," +
-			"或 force=true 强制入库。",
+		Description: "把你抽取的 fields 与转写的 content_text(正文)入库归档。平台会做权威校验:" +
+			"通过则 saved;不通过且未 force 则返回 needs_review + issues,请用户确认修正后重试,或 force=true 强制入库。",
 	}, saveHandler(wf))
 
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "query_document",
-		Description: "按单据类型、状态、关键词查询已处理的文档及其提取结果。",
+		Name: "query_document",
+		Description: "结构化查询已处理文档:按单据类型/状态/关键词/上传人过滤,并可用 field_filters " +
+			"按字段值精确/比较筛选(如金额>10000、甲方包含某公司、发票号=X)。适合精确、可筛选、可列全的查询。",
 	}, queryHandler(wf))
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "ask_document",
+		Description: "对已上传文件的正文内容做自然语言语义问答:返回相关原文片段与来源文档," +
+			"你据此作答并注明来自哪份文件。适合「我传的合同里违约金怎么约定」这类开放的内容型问题" +
+			"(精确筛选/统计请改用 query_document)。",
+	}, askHandler(wf))
 
 	return srv
 }
@@ -155,8 +178,8 @@ func toResult(v api.DocumentView) docResult {
 }
 
 type uploadInput struct {
-	DocType       string `json:"doc_type,omitempty" jsonschema:"单据类型;不传或传 auto 时平台自动识别,识别失败会转人工审核"`
-	Filename      string `json:"filename" jsonschema:"文件名,含扩展名,平台按扩展名选择解析路径"`
+	DocType       string `json:"doc_type,omitempty" jsonschema:"单据类型;不确定时不传,后续 save 时再定"`
+	Filename      string `json:"filename" jsonschema:"文件名,含扩展名"`
 	ContentText   string `json:"content_text,omitempty" jsonschema:"纯文本内容,与 content_base64/file_url 三选一"`
 	ContentBase64 string `json:"content_base64,omitempty" jsonschema:"base64 编码的文件内容,仅适合小文件"`
 	FileURL       string `json:"file_url,omitempty" jsonschema:"可下载的文件 URL,大文件推荐方式"`
@@ -183,21 +206,28 @@ type docIDInput struct {
 	DocumentID string `json:"document_id" jsonschema:"upload_document 返回的文档 ID"`
 }
 
-func extractHandler(wf *clients.Workflow) mcp.ToolHandlerFor[docIDInput, docResult] {
-	return func(ctx context.Context, req *mcp.CallToolRequest, in docIDInput) (*mcp.CallToolResult, docResult, error) {
+// extractHandler 返回字段清单(api.FieldBrief),不做识别。
+func extractHandler(wf *clients.Workflow) mcp.ToolHandlerFor[docIDInput, api.FieldBrief] {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in docIDInput) (*mcp.CallToolResult, api.FieldBrief, error) {
 		ctx = withUser(ctx, req)
-		view, err := wf.Extract(ctx, in.DocumentID)
+		brief, err := wf.Extract(ctx, in.DocumentID)
 		if err != nil {
-			return nil, docResult{}, err
+			return nil, api.FieldBrief{}, err
 		}
-		return nil, toResult(view), nil
+		return nil, brief, nil
 	}
 }
 
-func validateHandler(wf *clients.Workflow) mcp.ToolHandlerFor[docIDInput, docResult] {
-	return func(ctx context.Context, req *mcp.CallToolRequest, in docIDInput) (*mcp.CallToolResult, docResult, error) {
+type validateInput struct {
+	DocumentID string        `json:"document_id" jsonschema:"文档 ID"`
+	Fields     []model.Field `json:"fields" jsonschema:"你抽取的字段"`
+	DocType    string        `json:"doc_type,omitempty" jsonschema:"你判定的单据类型"`
+}
+
+func validateHandler(wf *clients.Workflow) mcp.ToolHandlerFor[validateInput, docResult] {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in validateInput) (*mcp.CallToolResult, docResult, error) {
 		ctx = withUser(ctx, req)
-		view, err := wf.Validate(ctx, in.DocumentID)
+		view, err := wf.Validate(ctx, in.DocumentID, api.ValidateRequest{Fields: in.Fields, DocType: in.DocType})
 		if err != nil {
 			return nil, docResult{}, err
 		}
@@ -206,15 +236,22 @@ func validateHandler(wf *clients.Workflow) mcp.ToolHandlerFor[docIDInput, docRes
 }
 
 type saveInput struct {
-	DocumentID string        `json:"document_id" jsonschema:"文档 ID"`
-	Fields     []model.Field `json:"fields,omitempty" jsonschema:"人工审核修正后的字段;传入则覆盖提取结果"`
-	Force      bool          `json:"force,omitempty" jsonschema:"true 时允许 needs_review 状态直接入库"`
+	DocumentID  string        `json:"document_id" jsonschema:"文档 ID"`
+	Fields      []model.Field `json:"fields,omitempty" jsonschema:"你抽取的字段"`
+	ContentText string        `json:"content_text,omitempty" jsonschema:"你转写的正文,用于归档检索与知识库"`
+	DocType     string        `json:"doc_type,omitempty" jsonschema:"你判定的单据类型"`
+	Force       bool          `json:"force,omitempty" jsonschema:"true 时允许 needs_review 直接入库"`
 }
 
 func saveHandler(wf *clients.Workflow) mcp.ToolHandlerFor[saveInput, docResult] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in saveInput) (*mcp.CallToolResult, docResult, error) {
 		ctx = withUser(ctx, req)
-		view, err := wf.Save(ctx, in.DocumentID, api.SaveRequest{Fields: in.Fields, Force: in.Force})
+		view, err := wf.Save(ctx, in.DocumentID, api.SaveRequest{
+			Fields:      in.Fields,
+			ContentText: in.ContentText,
+			DocType:     in.DocType,
+			Force:       in.Force,
+		})
 		if err != nil {
 			return nil, docResult{}, err
 		}
@@ -222,12 +259,21 @@ func saveHandler(wf *clients.Workflow) mcp.ToolHandlerFor[saveInput, docResult] 
 	}
 }
 
+// queryFieldFilter 是按提取字段值做精确/比较过滤的条件(WorkBuddy 据自然语言构造)。
+type queryFieldFilter struct {
+	Field  string   `json:"field" jsonschema:"字段名(与该单据类型的字段一致,如 amount/party_a)"`
+	Op     string   `json:"op" jsonschema:"eq(等于)|ne(不等)|contains(包含)|gt|gte|lt|lte(数值比较)|in(在候选中)"`
+	Value  string   `json:"value,omitempty" jsonschema:"比较值;gt/gte/lt/lte 按数值比较(会自动去千分位逗号)"`
+	Values []string `json:"values,omitempty" jsonschema:"当 op 为 in 时的候选值列表"`
+}
+
 type queryInput struct {
-	DocType    string `json:"doc_type,omitempty" jsonschema:"按单据类型过滤"`
-	Status     string `json:"status,omitempty" jsonschema:"按状态过滤"`
-	Keyword    string `json:"keyword,omitempty" jsonschema:"匹配文件名或正文的关键词"`
-	UploadedBy string `json:"uploaded_by,omitempty" jsonschema:"按上传人过滤(操作人标识)"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"返回条数,默认 20,上限 100"`
+	DocType      string             `json:"doc_type,omitempty" jsonschema:"按单据类型过滤"`
+	Status       string             `json:"status,omitempty" jsonschema:"按状态过滤"`
+	Keyword      string             `json:"keyword,omitempty" jsonschema:"匹配文件名或正文的关键词"`
+	UploadedBy   string             `json:"uploaded_by,omitempty" jsonschema:"按上传人过滤(操作人标识)"`
+	FieldFilters []queryFieldFilter `json:"field_filters,omitempty" jsonschema:"按字段值精确/比较过滤,如金额>10000、甲方包含某公司"`
+	Limit        int                `json:"limit,omitempty" jsonschema:"返回条数,默认 20,上限 100"`
 }
 
 type queryOutput struct {
@@ -238,13 +284,18 @@ type queryOutput struct {
 func queryHandler(wf *clients.Workflow) mcp.ToolHandlerFor[queryInput, queryOutput] {
 	return func(ctx context.Context, req *mcp.CallToolRequest, in queryInput) (*mcp.CallToolResult, queryOutput, error) {
 		ctx = withUser(ctx, req)
+		filters := make([]store.FieldFilter, 0, len(in.FieldFilters))
+		for _, f := range in.FieldFilters {
+			filters = append(filters, store.FieldFilter{Field: f.Field, Op: f.Op, Value: f.Value, Values: f.Values})
+		}
 		// TODO: 「普通员工默认只查自己上传的文档」(方案 §8 Q5)未拍板,当前不做默认过滤
 		res, err := wf.Query(ctx, store.QueryFilter{
-			DocType:    in.DocType,
-			Status:     in.Status,
-			Keyword:    in.Keyword,
-			UploadedBy: in.UploadedBy,
-			Limit:      in.Limit,
+			DocType:      in.DocType,
+			Status:       in.Status,
+			Keyword:      in.Keyword,
+			UploadedBy:   in.UploadedBy,
+			FieldFilters: filters,
+			Limit:        in.Limit,
 		})
 		if err != nil {
 			return nil, queryOutput{}, err
@@ -254,5 +305,22 @@ func queryHandler(wf *clients.Workflow) mcp.ToolHandlerFor[queryInput, queryOutp
 			out.Documents = append(out.Documents, toResult(v))
 		}
 		return nil, out, nil
+	}
+}
+
+type askInput struct {
+	Question string `json:"question" jsonschema:"用户关于已上传文件内容的自然语言问题"`
+	DocType  string `json:"doc_type,omitempty" jsonschema:"可选:限定在某单据类型内检索"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"返回相关片段数,默认 5,上限 50"`
+}
+
+func askHandler(wf *clients.Workflow) mcp.ToolHandlerFor[askInput, api.AskResult] {
+	return func(ctx context.Context, req *mcp.CallToolRequest, in askInput) (*mcp.CallToolResult, api.AskResult, error) {
+		ctx = withUser(ctx, req)
+		res, err := wf.Ask(ctx, api.AskRequest{Question: in.Question, Limit: in.Limit, DocType: in.DocType})
+		if err != nil {
+			return nil, api.AskResult{}, err
+		}
+		return nil, res, nil
 	}
 }

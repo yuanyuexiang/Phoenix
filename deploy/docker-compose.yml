@@ -1,13 +1,14 @@
 # Phoenix 全套服务(对应说明书 §7 系统组成):
-#   mcp(连接器/主入口) workflow(工作流引擎) parser(文档解析)
-#   ai(AI提取/图片转写) admin(前端管理后台) + postgres/minio/redis
+#   mcp(连接器/主入口) workflow(工作流引擎 + 存储 + 检索)
+#   admin(前端管理后台) + postgres/minio/redis
+#   识别/字段提取已移至 WorkBuddy 客户端,后端不再有 parser/ai 服务。
 #
 # 全套启动:  docker compose -f deploy/docker-compose.yml up -d --build
 # 仅基础设施(本机调试 Go/前端时):
 #   docker compose -f deploy/docker-compose.yml up -d postgres minio redis
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16 # 含 pgvector 扩展(知识库向量检索);同 pg16,pgdata 卷兼容
     environment:
       POSTGRES_USER: phoenix
       POSTGRES_PASSWORD: phoenix
@@ -44,31 +45,7 @@ services:
     ports:
       - "6380:6379"
 
-  parser: # 文档解析服务
-    build:
-      context: ../backend
-      args: { SERVICE: parser }
-    ports:
-      - "8082:8082"
-
-  ai: # AI 字段提取/图片转写服务
-    build:
-      context: ../backend
-      args: { SERVICE: ai }
-    environment:
-      # 配置 LLM 后自动切换真实提取器,不配则用 Mock(说明书 §13 模型来源可配置):
-      # PHX_LLM_ENDPOINT: https://api.deepseek.com/v1
-      # PHX_LLM_API_KEY: ${DEEPSEEK_API_KEY}
-      # PHX_LLM_MODEL: deepseek-chat
-      # 配置视觉大模型后图片可转写,不配则上传图片会在提取阶段明确报错:
-      # PHX_VISION_ENDPOINT: https://dashscope.aliyuncs.com/compatible-mode/v1
-      # PHX_VISION_API_KEY: ${DASHSCOPE_API_KEY}
-      # PHX_VISION_MODEL: qwen-vl-plus
-      PHX_AI_ADDR: ":8083"
-    ports:
-      - "8083:8083"
-
-  workflow: # 工作流引擎(编排 + 存储)
+  workflow: # 工作流引擎(编排 + 存储 + 检索)
     build:
       context: ../backend
       args: { SERVICE: workflow }
@@ -82,9 +59,11 @@ services:
       PHX_MINIO_ENDPOINT: minio:9000
       PHX_MINIO_ACCESS_KEY: phoenix
       PHX_MINIO_SECRET_KEY: phoenix-secret
-      PHX_PARSER_URL: http://parser:8082
-      PHX_AI_URL: http://ai:8083
       PHX_ADMIN_PASSWORD: phoenix123 # 管理后台访问密码,生产务必修改
+      # 配置 embedding 端点后启用 RAG 知识库(ask_document 语义问答);不配则知识库关闭:
+      # PHX_EMBED_ENDPOINT: https://dashscope.aliyuncs.com/compatible-mode/v1
+      # PHX_EMBED_API_KEY: ${DASHSCOPE_API_KEY}
+      # PHX_EMBED_MODEL: text-embedding-v3   # 维度须与迁移里的 vector(1024) 一致
     ports:
       - "8081:8081"
 

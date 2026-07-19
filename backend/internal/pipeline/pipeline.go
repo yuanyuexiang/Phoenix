@@ -1,42 +1,44 @@
-// Package pipeline 是工作流引擎(说明书 §7)的编排核心:
+// Package pipeline 是工作流引擎(说明书 §7)的编排核心。
 //
-//	上传 → 文字识别/解析 → AI字段提取 → 规则校验 → [人工审核] → 入库 → 归档
+// 内容识别/字段提取由 WorkBuddy(多模态大模型)在客户端完成;后端只做:
 //
-// 每个阶段状态持久化在 documents.status,调用方(MCP/管理后台)可分步驱动、
-// 断点续跑。文档解析与 AI 能力是独立服务,这里只做路由与编排:
-// 图片 → ai 服务视觉转写;办公文档 → parser 服务;正文 → ai 服务提取。
+//	上传归档(MinIO) → [WorkBuddy 识别] → 回传字段+正文 → 规则校验 → 入库
+//
+// 每个阶段状态持久化在 documents.status,调用方(MCP/管理后台)可分步驱动。
 package pipeline
 
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
-	"github.com/yuanyuexiang/phoenix/internal/clients"
 	"github.com/yuanyuexiang/phoenix/internal/model"
-	"github.com/yuanyuexiang/phoenix/internal/parser"
+	"github.com/yuanyuexiang/phoenix/internal/rag"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
 	"github.com/yuanyuexiang/phoenix/internal/validate"
 )
 
+// Embedder 把文本向量化(RAG 知识库)。nil = 知识库未启用(不入向量、ask 返回未启用)。
+type Embedder interface {
+	Embed(ctx context.Context, texts []string) ([][]float32, error)
+}
+
 type Pipeline struct {
-	DB              *store.DB
-	Objects         *store.Objects
-	Parser          *clients.Parser // 文档解析服务(PDF/Word/Excel)
-	AI              *clients.AI     // AI 字段提取/分类/图片转写服务
-	Registry        *schema.Registry
-	MinConfidence   float64 // 字段置信度低于此值转人工
-	ClassifyMinConf float64 // 自动分类置信度低于此值走开放提取兜底
+	DB            *store.DB
+	Objects       *store.Objects
+	Registry      *schema.Registry
+	Embedder      Embedder // 可为 nil(知识库关闭)
+	MinConfidence float64  // 字段置信度低于此值转人工(仅当客户端回传了置信度)
 }
 
 // Upload 实现 upload_document:归档原始文件到 MinIO 并登记任务。
-// docType 为空或 "auto" 时按待自动分类处理(提取阶段识别类型)。
+// docType 为空或 "auto" 时按待定类型处理(由 WorkBuddy 在提取阶段确定)。
 // uploadedBy 是操作人展示口径(可为空),由 API 层从请求头解析(workflowapi.operatorOf)。
 func (p *Pipeline) Upload(ctx context.Context, docType, filename string, data []byte, uploadedBy string) (*model.Document, error) {
 	if docType == "" {
@@ -44,7 +46,7 @@ func (p *Pipeline) Upload(ctx context.Context, docType, filename string, data []
 	}
 	if docType != model.DocTypeAuto {
 		if _, ok := p.Registry.Get(docType); !ok {
-			return nil, fmt.Errorf("未知的单据类型 %q,可用类型: %v(或留空/auto 自动识别)", docType, p.Registry.Names())
+			return nil, fmt.Errorf("未知的单据类型 %q,可用类型: %v(或留空/auto 待定)", docType, p.Registry.Names())
 		}
 	}
 	if len(data) == 0 {
@@ -71,136 +73,68 @@ func (p *Pipeline) Upload(ctx context.Context, docType, filename string, data []
 	return doc, nil
 }
 
-// ExtractFields 实现 extract_fields:取正文(图片走 ai 服务视觉转写,文档走解析服务),
-// 类型未知时先自动分类,再调用 AI 服务提取字段:
-//   - 分类命中已配置类型 → 按该类型 schema 定向提取;
-//   - 分类失败 → 标记 unknown,开放提取兜底(校验阶段必转人工审核)。
-func (p *Pipeline) ExtractFields(ctx context.Context, id string) (*model.Document, error) {
+// FieldBrief 实现 extract_fields 的新语义:后端不识别,只下发"该抽哪些字段"。
+// doc 的类型已配置 → 返回该类型的字段清单;类型 auto/unknown → 返回全部类型目录供 WorkBuddy 选型。
+func (p *Pipeline) FieldBrief(ctx context.Context, id string) (api.FieldBrief, error) {
 	doc, err := p.DB.GetDocument(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("文档 %s 不存在", id)
+		return api.FieldBrief{}, fmt.Errorf("文档 %s 不存在", id)
 	}
-
-	if doc.Text == "" {
-		data, err := p.Objects.Get(ctx, doc.ObjectKey)
-		if err != nil {
-			return p.fail(ctx, doc, fmt.Errorf("读取归档文件失败: %w", err))
-		}
-		text, err := p.toText(ctx, doc.Filename, data)
-		if err != nil {
-			return p.fail(ctx, doc, err)
-		}
-		if strings.TrimSpace(text) == "" {
-			return p.fail(ctx, doc, fmt.Errorf("未能从文档中识别出任何文字,请确认上传的是单据而非普通照片"))
-		}
-		doc.Text = text
+	if dt, ok := p.Registry.Get(doc.DocType); ok {
+		return briefOf(dt), nil
 	}
-
-	// 类型未知(或上次识别失败,人工重新提取时再试一次)→ 自动分类
-	if doc.DocType == model.DocTypeAuto || doc.DocType == model.DocTypeUnknown {
-		res, err := p.AI.Classify(ctx, api.ClassifyRequest{Text: doc.Text, Candidates: p.classifyCandidates()})
-		if err != nil {
-			return p.fail(ctx, doc, fmt.Errorf("自动分类失败: %w", err))
-		}
-		if _, ok := p.Registry.Get(res.DocType); ok && res.Confidence >= p.ClassifyMinConf {
-			doc.DocType = res.DocType
-		} else {
-			doc.DocType = model.DocTypeUnknown
-		}
+	// 类型未定:给目录供 WorkBuddy 选型
+	brief := api.FieldBrief{DocType: doc.DocType}
+	for _, name := range p.Registry.Names() {
+		dt, _ := p.Registry.Get(name)
+		brief.Catalog = append(brief.Catalog, api.DocTypeDigest{Name: dt.Name, Title: dt.Title, Description: dt.Description})
 	}
-
-	var req api.ExtractRequest
-	if doc.DocType == model.DocTypeUnknown {
-		// 开放提取兜底:不套 schema,抽取实际存在的键值对
-		req = api.ExtractRequest{Text: doc.Text, DocType: model.DocTypeUnknown}
-	} else {
-		dt, ok := p.Registry.Get(doc.DocType)
-		if !ok {
-			return nil, fmt.Errorf("文档的单据类型 %q 已不在配置中", doc.DocType)
-		}
-		specs := make([]api.FieldSpecView, 0, len(dt.Fields))
-		for _, f := range dt.Fields {
-			specs = append(specs, api.FieldSpecView{
-				Name:        f.Name,
-				Label:       f.Label,
-				Description: f.Description,
-				Aliases:     f.Aliases,
-			})
-		}
-		req = api.ExtractRequest{Text: doc.Text, DocType: dt.Name, Fields: specs}
-	}
-
-	resp, err := p.AI.Extract(ctx, req)
-	if err != nil {
-		return p.fail(ctx, doc, fmt.Errorf("字段提取失败: %w", err))
-	}
-
-	doc.Fields = resp.Fields
-	doc.Status = model.StatusExtracted
-	doc.Error = ""
-	doc.Issues = nil
-	if err := p.DB.UpdateDocument(ctx, doc); err != nil {
-		return nil, err
-	}
-	return doc, nil
+	return brief, nil
 }
 
-// classifyCandidates 把已配置的单据类型转成分类候选(标签取各字段中文名)。
-func (p *Pipeline) classifyCandidates() []api.DocTypeCandidate {
-	names := p.Registry.Names()
-	candidates := make([]api.DocTypeCandidate, 0, len(names))
-	for _, name := range names {
-		dt, _ := p.Registry.Get(name)
-		labels := make([]string, 0, len(dt.Fields))
-		for _, f := range dt.Fields {
-			labels = append(labels, f.Label)
-		}
-		candidates = append(candidates, api.DocTypeCandidate{
-			Name:        dt.Name,
-			Title:       dt.Title,
-			Description: dt.Description,
-			Labels:      labels,
+func briefOf(dt *schema.DocType) api.FieldBrief {
+	brief := api.FieldBrief{DocType: dt.Name, Title: dt.Title}
+	for _, f := range dt.Fields {
+		brief.Fields = append(brief.Fields, api.BriefField{
+			Name:        f.Name,
+			Label:       f.Label,
+			Description: f.Description,
+			Aliases:     f.Aliases,
+			Required:    f.Rule.Required,
+			Pattern:     f.Rule.Pattern,
+			Enum:        f.Rule.Enum,
 		})
 	}
-	return candidates
+	return brief
 }
 
-// toText 按文件类型路由:图片 → ai 服务视觉转写,其余 → 文档解析服务。
-func (p *Pipeline) toText(ctx context.Context, filename string, data []byte) (string, error) {
-	ext := strings.ToLower(filepath.Ext(filename))
-	if parser.ImageExts[ext] {
-		return p.AI.Transcribe(ctx, filename, data)
-	}
-	return p.Parser.Parse(ctx, filename, data)
-}
-
-// Validate 实现 validate_document:规则校验 + 置信度阈值,决定是否转人工。
-func (p *Pipeline) Validate(ctx context.Context, id string) (*model.Document, error) {
+// Validate 实现 validate_document:对 WorkBuddy 回传的字段做 schema 预校验(不置 saved)。
+// docType 非空时以其为准(WorkBuddy 定的类型)。
+func (p *Pipeline) Validate(ctx context.Context, id string, fields []model.Field, docType string) (*model.Document, error) {
 	doc, err := p.DB.GetDocument(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("文档 %s 不存在", id)
 	}
-	if len(doc.Fields) == 0 && doc.Status == model.StatusUploaded {
-		return nil, fmt.Errorf("文档尚未提取字段,请先调用 extract_fields")
+	if docType != "" {
+		doc.DocType = docType
+	}
+	if len(fields) > 0 {
+		doc.Fields = fields
 	}
 
-	// 类型未识别:无 schema 可校验,直接转人工审核定类型
-	if doc.DocType == model.DocTypeUnknown || doc.DocType == model.DocTypeAuto {
+	dt, ok := p.Registry.Get(doc.DocType)
+	if !ok {
+		// 类型未识别/未配置:无 schema 可校验,转人工定类型
 		doc.Status = model.StatusNeedsReview
 		doc.Issues = []model.ValidationIssue{{
 			Field:   "doc_type",
 			Rule:    "classify",
-			Message: "未能自动识别单据类型,已做开放提取,请人工确认类型与字段",
+			Message: fmt.Sprintf("单据类型 %q 未识别或未配置,请人工确认类型与字段", doc.DocType),
 		}}
 		if err := p.DB.UpdateDocument(ctx, doc); err != nil {
 			return nil, err
 		}
 		return doc, nil
-	}
-
-	dt, ok := p.Registry.Get(doc.DocType)
-	if !ok {
-		return nil, fmt.Errorf("文档的单据类型 %q 已不在配置中", doc.DocType)
 	}
 
 	status, issues := validate.Run(doc.Fields, dt, p.MinConfidence)
@@ -212,28 +146,41 @@ func (p *Pipeline) Validate(ctx context.Context, id string) (*model.Document, er
 	return doc, nil
 }
 
-// Save 实现 save_database:确认入库。
-// fields 非空时以其为准(人工审核修正后的值),并要求先通过校验或显式覆盖。
-// reviewedBy 记为「入库确认人」(幂等分支不覆盖已有值)。
-func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, force bool, reviewedBy string) (*model.Document, error) {
+// Save 实现 save_database:落字段+正文,服务端权威校验后入库。
+// WorkBuddy 走「upload → save(带 fields+contentText)」直接入库,无需先 extract/validate;
+// 校验就地跑一次:不通过且未 force → needs_review(非报错,回带 issues 交客户端转述)。
+// reviewedBy 记为「入库确认人」。
+func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, contentText, docType string, force bool, reviewedBy string) (*model.Document, error) {
 	doc, err := p.DB.GetDocument(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("文档 %s 不存在", id)
 	}
-	if len(fields) > 0 {
-		doc.Fields = fields // 人工审核修正
-		doc.Issues = nil
-	}
-	switch doc.Status {
-	case model.StatusValidated:
-	case model.StatusNeedsReview:
-		if len(fields) == 0 && !force {
-			return nil, fmt.Errorf("文档待人工审核(%d 个问题),请传入修正后的 fields,或 force=true 强制入库", len(doc.Issues))
-		}
-	case model.StatusSaved:
+	if doc.Status == model.StatusSaved {
 		return doc, nil // 幂等
-	default:
-		return nil, fmt.Errorf("当前状态 %q 不能入库,请先完成提取与校验", doc.Status)
+	}
+	if docType != "" {
+		doc.DocType = docType
+	}
+	if len(fields) > 0 {
+		doc.Fields = fields
+	}
+	if contentText != "" {
+		doc.Text = contentText // 正文落库(检索与知识库源)
+	}
+
+	dt, ok := p.Registry.Get(doc.DocType)
+	if !ok {
+		return nil, fmt.Errorf("单据类型 %q 未配置,无法入库,请先确认类型", doc.DocType)
+	}
+
+	status, issues := validate.Run(doc.Fields, dt, p.MinConfidence)
+	doc.Issues = issues
+	if status == model.StatusNeedsReview && !force {
+		doc.Status = model.StatusNeedsReview
+		if err := p.DB.UpdateDocument(ctx, doc); err != nil {
+			return nil, err
+		}
+		return doc, nil // 未入库,回带 issues 供 WorkBuddy 请用户确认或修正
 	}
 
 	doc.Status = model.StatusSaved
@@ -242,7 +189,32 @@ func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, fo
 	if err := p.DB.UpdateDocument(ctx, doc); err != nil {
 		return nil, err
 	}
+	p.ingest(ctx, doc) // 知识库入库(best-effort,失败不阻断)
 	return doc, nil
+}
+
+// ingest 把正文切片 + 向量化后存入知识库。best-effort:未启用/正文空/embedding 故障时
+// 仅告警,不影响主流程(结构化数据与归档已落库)。
+func (p *Pipeline) ingest(ctx context.Context, doc *model.Document) {
+	if p.Embedder == nil || strings.TrimSpace(doc.Text) == "" {
+		return
+	}
+	parts := rag.Split(doc.Text)
+	if len(parts) == 0 {
+		return
+	}
+	vecs, err := p.Embedder.Embed(ctx, parts)
+	if err != nil {
+		slog.Warn("知识库入库失败(可后续重建)", "document_id", doc.ID, "error", err)
+		return
+	}
+	chunks := make([]store.Chunk, 0, len(parts))
+	for i, c := range parts {
+		chunks = append(chunks, store.Chunk{Index: i, Content: c, Embedding: vecs[i]})
+	}
+	if err := p.DB.ReplaceChunks(ctx, doc.ID, chunks); err != nil {
+		slog.Warn("知识库写入失败", "document_id", doc.ID, "error", err)
+	}
 }
 
 // Query 实现 query_document。
@@ -250,12 +222,17 @@ func (p *Pipeline) Query(ctx context.Context, f store.QueryFilter) ([]*model.Doc
 	return p.DB.QueryDocuments(ctx, f)
 }
 
-// fail 把失败状态落库后返回原始错误,保证任务可追溯。
-func (p *Pipeline) fail(ctx context.Context, doc *model.Document, cause error) (*model.Document, error) {
-	doc.Status = model.StatusFailed
-	doc.Error = cause.Error()
-	if err := p.DB.UpdateDocument(ctx, doc); err != nil {
-		return nil, fmt.Errorf("%w(且状态落库失败: %v)", cause, err)
+// Ask 实现 ask_document:把问题向量化后做语义检索,返回相关正文片段与来源文档。
+func (p *Pipeline) Ask(ctx context.Context, question string, limit int, docType string) ([]store.ChunkHit, error) {
+	if p.Embedder == nil {
+		return nil, fmt.Errorf("知识库未启用:请为 workflow 配置 PHX_EMBED_ENDPOINT / PHX_EMBED_API_KEY")
 	}
-	return nil, cause
+	if strings.TrimSpace(question) == "" {
+		return nil, fmt.Errorf("question 不能为空")
+	}
+	vecs, err := p.Embedder.Embed(ctx, []string{question})
+	if err != nil {
+		return nil, fmt.Errorf("问题向量化失败: %w", err)
+	}
+	return p.DB.SearchChunks(ctx, vecs[0], limit, docType, "")
 }

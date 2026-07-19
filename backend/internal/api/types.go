@@ -1,12 +1,11 @@
 // Package api 定义服务间 HTTP 契约的共享 DTO(Monorepo 内多服务共用)。
 //
-// 服务拓扑(说明书 §7 系统组成):
+// 服务拓扑(说明书 §7 系统组成):内容识别/提取由 WorkBuddy(多模态大模型)完成,
+// 后端只负责归档、校验、存储与检索。
 //
-//	WorkBuddy ─MCP→ services/mcp ──┐
-//	                               ├─REST→ services/workflow ──→ services/parser
-//	浏览器 ───→ services/admin ────┘        │      │    └──────→ services/ai(提取/分类/图片转写)
-//	                                        ▼      ▼
-//	                                  PostgreSQL  MinIO
+//	WorkBuddy ─MCP→ services/mcp ──REST→ services/workflow
+//	浏览器 ───→ services/admin ──────────┘   │     │
+//	                                    PostgreSQL  MinIO
 package api
 
 import "github.com/yuanyuexiang/phoenix/internal/model"
@@ -22,9 +21,19 @@ type UploadRequest struct {
 }
 
 // SaveRequest 是 POST /api/documents/{id}/save 的请求体。
+// 字段与正文均由 WorkBuddy 识别后回传;ContentText 落 documents.content_text
+// 供检索与知识库使用。
 type SaveRequest struct {
-	Fields []model.Field `json:"fields,omitempty"` // 人工审核修正后的字段
-	Force  bool          `json:"force,omitempty"`
+	Fields      []model.Field `json:"fields,omitempty"`       // WorkBuddy 抽取的字段
+	ContentText string        `json:"content_text,omitempty"` // WorkBuddy 识别出的正文
+	DocType     string        `json:"doc_type,omitempty"`     // WorkBuddy 定的单据类型(覆盖上传时的)
+	Force       bool          `json:"force,omitempty"`        // 强制入库(跳过 needs_review)
+}
+
+// ValidateRequest 是 POST /api/documents/{id}/validate 的请求体。
+type ValidateRequest struct {
+	Fields  []model.Field `json:"fields,omitempty"`
+	DocType string        `json:"doc_type,omitempty"`
 }
 
 // DocumentView 是对外(MCP/管理后台)统一的文档视图。
@@ -47,66 +56,54 @@ type QueryResult struct {
 	Documents []DocumentView `json:"documents"`
 }
 
-// ParseResponse 是 parser 服务 POST /parse 的响应体。
-type ParseResponse struct {
-	Text string `json:"text"`
+// AskRequest 是 POST /api/ask 的请求体(知识库语义问答)。
+type AskRequest struct {
+	Question string `json:"question"`
+	Limit    int    `json:"limit,omitempty"`
+	DocType  string `json:"doc_type,omitempty"`
 }
 
-// ExtractRequest 是 ai 服务 POST /extract 的请求体。
-// 字段定义随请求下发:单据类型配置归 workflow 管,ai 服务保持无状态。
-// Fields 为空 = 开放提取模式:不套 schema,抽取文档中实际存在的键值对。
-type ExtractRequest struct {
-	Text    string          `json:"text"`
-	DocType string          `json:"doc_type"`
-	Fields  []FieldSpecView `json:"fields,omitempty"`
-}
-
-// DocTypeCandidate 是分类候选单据类型(Labels 为各字段中文标签)。
-type DocTypeCandidate struct {
-	Name        string   `json:"name"`
-	Title       string   `json:"title"`
-	Description string   `json:"description,omitempty"`
-	Labels      []string `json:"labels"`
-}
-
-// ClassifyRequest 是 ai 服务 POST /classify 的请求体。
-type ClassifyRequest struct {
-	Text       string             `json:"text"`
-	Candidates []DocTypeCandidate `json:"candidates"`
-}
-
-// ClassifyResponse 是 ai 服务 POST /classify 的响应体。
-// 无法判断时 DocType 为空、Confidence 为 0。
-type ClassifyResponse struct {
+// ChunkHit 是知识库检索命中的一条正文片段(与 store.ChunkHit 对齐)。
+type ChunkHit struct {
+	DocumentID string  `json:"document_id"`
+	Filename   string  `json:"filename"`
 	DocType    string  `json:"doc_type"`
-	Confidence float64 `json:"confidence"`
-	Classifier string  `json:"classifier"`
+	Content    string  `json:"content"`
+	Score      float64 `json:"score"`
 }
 
-// FieldSpecView 是下发给 ai 服务的字段定义(internal/schema.FieldSpec 的传输形态)。
-type FieldSpecView struct {
+// AskResult 是 POST /api/ask 的响应体。
+type AskResult struct {
+	Total  int        `json:"total"`
+	Chunks []ChunkHit `json:"chunks"`
+}
+
+// FieldBrief 是 extract_fields 的返回:告诉 WorkBuddy 该抽哪些字段。
+// 后端不再做识别,只下发抽取指令。DocType 为 auto/unknown 时 Fields 为空、
+// Catalog 给出全部已配置类型供 WorkBuddy 选型。
+type FieldBrief struct {
+	DocType string          `json:"doc_type"`
+	Title   string          `json:"title,omitempty"`
+	Fields  []BriefField    `json:"fields,omitempty"`  // 该类型要抽的字段清单
+	Catalog []DocTypeDigest `json:"catalog,omitempty"` // 类型未定时的可选单据类型目录
+}
+
+// BriefField 是下发给 WorkBuddy 的单个字段说明(含规则摘要,帮它抽对格式)。
+type BriefField struct {
 	Name        string   `json:"name"`
 	Label       string   `json:"label"`
 	Description string   `json:"description,omitempty"`
 	Aliases     []string `json:"aliases,omitempty"`
+	Required    bool     `json:"required,omitempty"`
+	Pattern     string   `json:"pattern,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
 }
 
-// ExtractResponse 是 ai 服务 POST /extract 的响应体。
-type ExtractResponse struct {
-	Extractor string        `json:"extractor"` // mock 或 llm:<model>
-	Fields    []model.Field `json:"fields"`
-}
-
-// TranscribeRequest 是 ai 服务 POST /transcribe 的请求体(图片 → 文字转写)。
-type TranscribeRequest struct {
-	Filename      string `json:"filename"`
-	ContentBase64 string `json:"content_base64"`
-}
-
-// TranscribeResponse 是 ai 服务 POST /transcribe 的响应体。
-type TranscribeResponse struct {
-	Text        string `json:"text"`
-	Transcriber string `json:"transcriber"` // vision:<model>
+// DocTypeDigest 是单据类型目录项(供 WorkBuddy 在类型未定时选型)。
+type DocTypeDigest struct {
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
 }
 
 // ErrorResponse 是各服务统一的错误响应体。

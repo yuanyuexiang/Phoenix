@@ -25,10 +25,11 @@ const (
 )
 
 // Field 是从文档中提取出的一个字段。
+// Confidence 可选:WorkBuddy 回传字段时通常不带自评置信度(缺省为 0,校验时跳过该维度)。
 type Field struct {
 	Name       string  `json:"name"`
 	Value      string  `json:"value"`
-	Confidence float64 `json:"confidence"`
+	Confidence float64 `json:"confidence,omitempty"`
 }
 
 // ValidationIssue 是规则校验发现的一个问题。

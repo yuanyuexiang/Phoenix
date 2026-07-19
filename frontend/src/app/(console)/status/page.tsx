@@ -70,7 +70,7 @@ export default function StatusPage() {
           ))}
         </div>
         <p className="mt-6 text-xs text-ink-300">
-          说明:探测由 workflow 服务发起(parser / ai 及数据库);MCP 连接器(8080)与本页面
+          说明:探测由 workflow 服务发起(数据库、对象存储);MCP 连接器(8080)与本页面
           自身不在探测范围。MinIO 连接状态包含在 workflow 启动检查中。
         </p>
       </div>

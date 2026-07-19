@@ -35,11 +35,13 @@ export const queryDocuments = (params: Record<string, string>) =>
 export const uploadDocument = (docType: string, filename: string, contentText: string) =>
   post<Doc>("/api/documents", { doc_type: docType, filename, content_text: contentText });
 
-export const extractDocument = (id: string) => post<Doc>(`/api/documents/${id}/extract`, {});
+// 对人工编辑后的字段做规则校验(后端不再抽取,字段由人工/WorkBuddy 提供)。
+export const validateDocument = (id: string, fields: Field[], docType?: string) =>
+  post<Doc>(`/api/documents/${id}/validate`, { fields, doc_type: docType });
 
-export const validateDocument = (id: string) => post<Doc>(`/api/documents/${id}/validate`, {});
-
-export const saveDocument = (id: string, body: { fields?: Field[]; force?: boolean }) =>
-  post<Doc>(`/api/documents/${id}/save`, body);
+export const saveDocument = (
+  id: string,
+  body: { fields?: Field[]; content_text?: string; doc_type?: string; force?: boolean },
+) => post<Doc>(`/api/documents/${id}/save`, body);
 
 export const fetchStatus = () => request<{ components: Component[] }>("/api/status");

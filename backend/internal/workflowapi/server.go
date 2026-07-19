@@ -1,10 +1,10 @@
 // Package workflowapi 实现工作流引擎的 REST API 层(handler、鉴权、健康聚合)。
 // cmd/workflow 只负责装配依赖并调用 NewHandler;路由一览:
 //
-//	POST /api/documents                上传(content_text/base64/file_url 三选一)
-//	POST /api/documents/{id}/extract   文字识别/解析 + AI 字段提取
-//	POST /api/documents/{id}/validate  规则校验
-//	POST /api/documents/{id}/save      确认入库(可带人工修正 fields / force)
+//	POST /api/documents                上传归档(content_text/base64/file_url 三选一)
+//	POST /api/documents/{id}/extract   返回该类型要抽的字段清单(WorkBuddy 据此识别)
+//	POST /api/documents/{id}/validate  对回传字段做 schema 校验
+//	POST /api/documents/{id}/save      落字段+正文并入库(WorkBuddy 已识别完成)
 //	GET  /api/documents                查询(doc_type/status/keyword/uploaded_by/limit)
 //	GET  /api/doctypes                 单据类型配置(管理后台用)
 //	GET  /api/status                   组件健康聚合(服务状态页用)
@@ -65,6 +65,7 @@ func NewHandler(opts Options) http.Handler {
 	mux.HandleFunc("POST /api/documents/{id}/validate", s.validate)
 	mux.HandleFunc("POST /api/documents/{id}/save", s.save)
 	mux.HandleFunc("GET /api/documents", s.query)
+	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("GET /api/doctypes", s.doctypes)
 	mux.HandleFunc("GET /api/status", s.status)
 
@@ -176,18 +177,23 @@ func (s *server) upload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, api.ToView(doc))
 }
 
+// extract 返回该文档类型要抽的字段清单(后端不再识别,只下发抽取指令给 WorkBuddy)。
 func (s *server) extract(w http.ResponseWriter, r *http.Request) {
-	doc, err := s.opts.Pipeline.ExtractFields(r.Context(), r.PathValue("id"))
+	brief, err := s.opts.Pipeline.FieldBrief(r.Context(), r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	s.audit(r, "extract", doc.ID, nil)
-	writeJSON(w, api.ToView(doc))
+	writeJSON(w, brief)
 }
 
 func (s *server) validate(w http.ResponseWriter, r *http.Request) {
-	doc, err := s.opts.Pipeline.Validate(r.Context(), r.PathValue("id"))
+	var req api.ValidateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体解析失败: "+err.Error())
+		return
+	}
+	doc, err := s.opts.Pipeline.Validate(r.Context(), r.PathValue("id"), req.Fields, req.DocType)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
@@ -203,32 +209,61 @@ func (s *server) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor, _, _ := operatorOf(r)
-	doc, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.Force, actor)
+	doc, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.ContentText, req.DocType, req.Force, actor)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	s.audit(r, "save", doc.ID, map[string]any{"force": req.Force, "fields_overridden": len(req.Fields) > 0})
+	s.audit(r, "save", doc.ID, map[string]any{"force": req.Force, "has_content": req.ContentText != ""})
 	writeJSON(w, api.ToView(doc))
 }
 
 func (s *server) query(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
+	var fieldFilters []store.FieldFilter
+	if raw := q.Get("field_filters"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &fieldFilters); err != nil {
+			writeError(w, http.StatusBadRequest, "field_filters 解析失败: "+err.Error())
+			return
+		}
+	}
 	docs, err := s.opts.Pipeline.Query(r.Context(), store.QueryFilter{
-		DocType:    q.Get("doc_type"),
-		Status:     q.Get("status"),
-		Keyword:    q.Get("keyword"),
-		UploadedBy: q.Get("uploaded_by"),
-		Limit:      limit,
+		DocType:      q.Get("doc_type"),
+		Status:       q.Get("status"),
+		Keyword:      q.Get("keyword"),
+		UploadedBy:   q.Get("uploaded_by"),
+		FieldFilters: fieldFilters,
+		Limit:        limit,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	out := api.QueryResult{Total: len(docs), Documents: make([]api.DocumentView, 0, len(docs))}
 	for _, d := range docs {
 		out.Documents = append(out.Documents, api.ToView(d))
+	}
+	writeJSON(w, out)
+}
+
+// ask 知识库语义问答:返回相关正文片段与来源文档,供 WorkBuddy 据此作答。
+func (s *server) ask(w http.ResponseWriter, r *http.Request) {
+	var req api.AskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体解析失败: "+err.Error())
+		return
+	}
+	hits, err := s.opts.Pipeline.Ask(r.Context(), req.Question, req.Limit, req.DocType)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	out := api.AskResult{Total: len(hits), Chunks: make([]api.ChunkHit, 0, len(hits))}
+	for _, h := range hits {
+		out.Chunks = append(out.Chunks, api.ChunkHit{
+			DocumentID: h.DocumentID, Filename: h.Filename, DocType: h.DocType, Content: h.Content, Score: h.Score,
+		})
 	}
 	writeJSON(w, out)
 }

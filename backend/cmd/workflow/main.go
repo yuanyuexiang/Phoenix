@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/yuanyuexiang/phoenix/internal/clients"
 	"github.com/yuanyuexiang/phoenix/internal/config"
+	"github.com/yuanyuexiang/phoenix/internal/embed"
 	"github.com/yuanyuexiang/phoenix/internal/httpx"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
@@ -48,23 +48,26 @@ func run() error {
 		return err
 	}
 
+	var embedder pipeline.Embedder // nil = 知识库关闭
+	if cfg.EmbedEndpoint != "" {
+		embedder = embed.New(cfg.EmbedEndpoint, cfg.EmbedAPIKey, cfg.EmbedModel, cfg.EmbedDim)
+		slog.Info("知识库 embedding 就绪", "model", cfg.EmbedModel, "dim", cfg.EmbedDim)
+	} else {
+		slog.Warn("未配置 PHX_EMBED_ENDPOINT,知识库未启用(ask_document 将报未启用)")
+	}
+
 	handler := workflowapi.NewHandler(workflowapi.Options{
 		Pipeline: &pipeline.Pipeline{
-			DB:              db,
-			Objects:         objects,
-			Parser:          clients.NewParser(cfg.ParserBaseURL),
-			AI:              clients.NewAI(cfg.AIBaseURL),
-			Registry:        registry,
-			MinConfidence:   cfg.MinConfidence,
-			ClassifyMinConf: cfg.ClassifyMinConf,
+			DB:            db,
+			Objects:       objects,
+			Registry:      registry,
+			Embedder:      embedder,
+			MinConfidence: cfg.MinConfidence,
 		},
 		Registry:      registry,
 		DB:            db,
 		AdminPassword: cfg.AdminPassword,
-		HealthTargets: []workflowapi.HealthTarget{ // 服务状态页(管理后台)聚合探测
-			{Name: "parser 文档解析", URL: cfg.ParserBaseURL + "/healthz"},
-			{Name: "ai 字段提取", URL: cfg.AIBaseURL + "/healthz"},
-		},
+		// 识别已移至 WorkBuddy;后端不再依赖 parser/ai 服务,健康聚合只剩自身 + 存储。
 	})
 
 	return httpx.Serve(addr, handler, "workflow 工作流引擎")

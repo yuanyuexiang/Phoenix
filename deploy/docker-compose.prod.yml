@@ -6,7 +6,8 @@
 #   Traefik ──▶ admin(nginx :8084,SPA + /api 反代 workflow)   Host(${DIP_DOMAIN})
 #          ├──▶ mcp(:8080,WorkBuddy 连接器)                    Host(${DIP_DOMAIN}) && PathPrefix(/mcp)
 #          └──▶ keycloak(:8080,MCP OAuth 授权服务器)           Host(${DIP_DOMAIN}) && PathPrefix(/auth)
-#   其余服务(workflow/parser/ai/postgres/minio/redis)仅内部网络互通,不暴露。
+#   其余服务(workflow/postgres/minio/redis)仅内部网络互通,不暴露。
+#   识别/字段提取已移至 WorkBuddy 客户端,后端不再有 parser/ai 服务。
 #
 # 注意:
 #   - 项目名/容器名统一 phoenix 前缀。若服务器上仍有旧的同名 compose 项目(phoenix-backend 等),
@@ -19,7 +20,7 @@ name: phoenix
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16 # 含 pgvector 扩展(知识库向量检索);同 pg16,pgdata 卷兼容
     container_name: phoenix-postgres
     restart: unless-stopped
     environment:
@@ -60,30 +61,6 @@ services:
     restart: unless-stopped
     networks: [internal]
 
-  parser:
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-parser:${TAG:-latest}
-    container_name: phoenix-parser
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-    networks: [internal]
-
-  ai:
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-ai:${TAG:-latest}
-    container_name: phoenix-ai
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Shanghai
-      # LLM 三项留空则用 Mock 提取器(说明书 §13 模型来源可配置)
-      PHX_LLM_ENDPOINT: ${PHX_LLM_ENDPOINT:-}
-      PHX_LLM_API_KEY: ${PHX_LLM_API_KEY:-}
-      PHX_LLM_MODEL: ${PHX_LLM_MODEL:-deepseek-chat}
-      # 视觉大模型(图片转写):留空则上传图片会在提取阶段明确报错
-      PHX_VISION_ENDPOINT: ${PHX_VISION_ENDPOINT:-}
-      PHX_VISION_API_KEY: ${PHX_VISION_API_KEY:-}
-      PHX_VISION_MODEL: ${PHX_VISION_MODEL:-qwen-vl-plus}
-    networks: [internal]
-
   workflow:
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-workflow:${TAG:-latest}
     container_name: phoenix-workflow
@@ -99,9 +76,11 @@ services:
       PHX_MINIO_ENDPOINT: minio:9000
       PHX_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-phoenix}
       PHX_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      PHX_PARSER_URL: http://parser:8082
-      PHX_AI_URL: http://ai:8083
       PHX_ADMIN_PASSWORD: ${PHX_ADMIN_PASSWORD:?生产必须设置管理后台访问密码}
+      # RAG 知识库 embedding:留空则知识库关闭(ask_document 报未启用)
+      PHX_EMBED_ENDPOINT: ${PHX_EMBED_ENDPOINT:-}
+      PHX_EMBED_API_KEY: ${PHX_EMBED_API_KEY:-}
+      PHX_EMBED_MODEL: ${PHX_EMBED_MODEL:-text-embedding-v3}
     networks: [internal]
 
   keycloak: # 授权服务器(MCP OAuth;测试阶段部署,AS 选型拍板后可替换或做企业账号联邦)
