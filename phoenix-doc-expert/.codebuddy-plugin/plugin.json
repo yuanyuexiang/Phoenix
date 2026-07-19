@@ -1,6 +1,6 @@
 {
   "name": "phoenix-doc-expert",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Enterprise document processing expert using Phoenix intelligent document platform",
   "author": {
     "name": "WorkBuddy",
@@ -20,8 +20,8 @@
     "zh": "Phoenix文档处理顾问"
   },
   "displayDescription": {
-    "en": "Process enterprise documents via Phoenix platform: upload, field extraction, validation, database storage, and historical document querying.",
-    "zh": "基于Phoenix智能文档平台，完成单据上传、字段提取、校验入库与历史文档查询全流程处理。"
+    "en": "Recognize documents with multimodal AI, then archive, validate, store and retrieve via Phoenix: field extraction, structured & field-level query, and semantic Q&A over document content.",
+    "zh": "用多模态大模型识别单据，经 Phoenix 平台归档、校验、入库与检索：字段提取、结构化与字段级查询、文件内容语义问答。"
   },
   "avatar": "avatars/expert.png",
   "categoryId": "12-IndustryConsultant",
@@ -33,11 +33,11 @@
   "tags": [
     { "en": "AI Recognition", "zh": "智能识别" },
     { "en": "Field Extraction", "zh": "字段提取" },
-    { "en": "Document Validation", "zh": "文档校验" }
+    { "en": "Document Q&A", "zh": "内容问答" }
   ],
   "quickPrompts": [
     { "en": "Help me upload and process a document", "zh": "帮我上传并处理一份文档" },
-    { "en": "Query recently processed documents", "zh": "查询最近处理过的文档" },
-    { "en": "Extract key fields from this contract", "zh": "提取这份合同的关键字段" }
+    { "en": "Find reimbursements over 10,000", "zh": "查金额超过 1 万的报销单" },
+    { "en": "What does the contract say about the payment terms?", "zh": "我传的合同里付款周期是怎么约定的?" }
   ]
 }
