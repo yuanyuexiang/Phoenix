@@ -4,9 +4,9 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import * as api from "@/lib/api";
-import type { Doc, DocType, Field } from "@/lib/types";
+import type { Doc, DocType, Field, Issue } from "@/lib/types";
 import { DOCTYPE_SPECIAL } from "@/lib/types";
-import { btnDangerCls, btnPrimaryCls, inputCls, StatusBadge, ToastProvider, useToast } from "@/components/ui";
+import { btnCls, btnDangerCls, btnPrimaryCls, inputCls, StatusBadge, ToastProvider, useToast } from "@/components/ui";
 
 export default function ReviewPage() {
   return (
@@ -30,6 +30,8 @@ function ReviewView() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [currentID, setCurrentID] = useState<string | null>(preselect);
   const [edited, setEdited] = useState<Record<string, string>>({});
+  // check = 最近一次「重新校验」的预检结果(不落库);null 表示未预检。
+  const [check, setCheck] = useState<{ ok: boolean; issues: Issue[] } | null>(null);
 
   const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), false);
 
@@ -60,11 +62,26 @@ function ReviewView() {
   const select = (id: string) => {
     setCurrentID(id);
     setEdited({});
+    setCheck(null);
   };
 
   const patchDoc = (doc: Doc) => {
     setDocs((list) => list.map((d) => (d.id === doc.id ? doc : d)));
     setEdited({});
+    setCheck(null);
+  };
+
+  // 重新校验:纯预检,不落库。只提示当前编辑能否通过,不改文档状态(徽标只由入库改变)。
+  const runCheck = async () => {
+    if (!current) return;
+    try {
+      const r = await api.validateDocument(current.id, reviewedFields(), current.doc_type);
+      const issues = r.issues ?? [];
+      setCheck({ ok: issues.length === 0, issues });
+      toast(issues.length === 0 ? "预检通过,可点「保存并入库」正式入库" : `预检发现 ${issues.length} 个问题(未入库,见下方)`);
+    } catch (e) {
+      fail(e);
+    }
   };
 
   const reviewedFields = (): Field[] =>
@@ -135,15 +152,33 @@ function ReviewView() {
               </div>
             )}
 
-            {(current.issues ?? []).length > 0 && (
-              <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-100 px-4 py-3">
-                <p className="mb-1 text-sm font-medium text-amber-700">校验问题</p>
-                <ul className="list-disc pl-5 text-sm text-amber-700">
-                  {current.issues!.map((i, idx) => (
-                    <li key={idx}>{i.message}</li>
-                  ))}
-                </ul>
-              </div>
+            {/* 预检结果优先展示(不落库);未预检时展示上次入库尝试留下的校验问题 */}
+            {check ? (
+              check.ok ? (
+                <div className="mb-4 rounded-md border border-green-500/30 bg-green-100 px-4 py-3 text-sm text-green-700">
+                  ✓ 预检通过(尚未入库)。点「保存并入库」正式写入。
+                </div>
+              ) : (
+                <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-100 px-4 py-3">
+                  <p className="mb-1 text-sm font-medium text-amber-700">预检发现问题(尚未入库,修正后可重试,或强制入库)</p>
+                  <ul className="list-disc pl-5 text-sm text-amber-700">
+                    {check.issues.map((i, idx) => (
+                      <li key={idx}>{i.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            ) : (
+              (current.issues ?? []).length > 0 && (
+                <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-100 px-4 py-3">
+                  <p className="mb-1 text-sm font-medium text-amber-700">校验问题</p>
+                  <ul className="list-disc pl-5 text-sm text-amber-700">
+                    {current.issues!.map((i, idx) => (
+                      <li key={idx}>{i.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )
             )}
 
             <div className="rounded-lg border border-surface-300 bg-surface-0 shadow-card">
@@ -184,6 +219,9 @@ function ReviewView() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
+              <button className={btnCls} onClick={runCheck}>
+                重新校验(预检,不入库)
+              </button>
               <button
                 className={btnPrimaryCls}
                 onClick={() =>
@@ -195,7 +233,7 @@ function ReviewView() {
               >
                 {current.status === "saved" ? "保存更正" : "保存并入库"}
               </button>
-              {(current.issues?.length ?? 0) > 0 && (
+              {(check ? !check.ok : (current.issues?.length ?? 0) > 0) && (
                 <button
                   className={btnDangerCls}
                   onClick={() =>
@@ -213,9 +251,8 @@ function ReviewView() {
               </button>
             </div>
             <p className="mt-2 text-xs text-ink-300">
-              {current.status === "saved"
-                ? "本文档已入库。修改字段后「保存更正」即更新入库数据。"
-                : "「保存并入库」会先做规则校验:通过即入库(已入库);不通过会标记为待人工审核并列出问题,可修正后重试或强制入库。"}
+              建议先「重新校验」预检(不入库,只看当前编辑能否通过),确认无误再「保存并入库」正式写入。
+              {current.status === "saved" && " 本文档已入库,修改后「保存更正」即更新数据。"}
             </p>
           </div>
         )}

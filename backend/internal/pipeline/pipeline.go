@@ -108,8 +108,9 @@ func briefOf(dt *schema.DocType) api.FieldBrief {
 	return brief
 }
 
-// Validate 实现 validate_document:对 WorkBuddy 回传的字段做 schema 预校验(不置 saved)。
-// docType 非空时以其为准(WorkBuddy 定的类型)。
+// Validate 实现 validate_document:对回传字段做 schema 预校验(**纯预检,不落库**)。
+// 返回计算出的 status(validated/needs_review)与 issues,供调用方在正式入库前试跑;
+// 文档的持久化状态只由 Save 改变——避免"校验通过看着像入库、其实没入"的歧义。
 func (p *Pipeline) Validate(ctx context.Context, id string, fields []model.Field, docType string) (*model.Document, error) {
 	doc, err := p.DB.GetDocument(ctx, id)
 	if err != nil {
@@ -124,26 +125,18 @@ func (p *Pipeline) Validate(ctx context.Context, id string, fields []model.Field
 
 	dt, ok := p.Registry.Get(doc.DocType)
 	if !ok {
-		// 类型未识别/未配置:无 schema 可校验,转人工定类型
+		// 类型未识别/未配置:无 schema 可校验,视为需人工定类型
 		doc.Status = model.StatusNeedsReview
 		doc.Issues = []model.ValidationIssue{{
 			Field:   "doc_type",
 			Rule:    "classify",
 			Message: fmt.Sprintf("单据类型 %q 未识别或未配置,请人工确认类型与字段", doc.DocType),
 		}}
-		if err := p.DB.UpdateDocument(ctx, doc); err != nil {
-			return nil, err
-		}
 		return doc, nil
 	}
 
-	status, issues := validate.Run(doc.Fields, dt, p.MinConfidence)
-	doc.Status = status
-	doc.Issues = issues
-	if err := p.DB.UpdateDocument(ctx, doc); err != nil {
-		return nil, err
-	}
-	return doc, nil
+	doc.Status, doc.Issues = validate.Run(doc.Fields, dt, p.MinConfidence)
+	return doc, nil // 不持久化
 }
 
 // Save 实现 save_database:落字段+正文,服务端权威校验后入库。
