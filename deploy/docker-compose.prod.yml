@@ -81,6 +81,11 @@ services:
       PHX_EMBED_ENDPOINT: ${PHX_EMBED_ENDPOINT:-}
       PHX_EMBED_API_KEY: ${PHX_EMBED_API_KEY:-}
       PHX_EMBED_MODEL: ${PHX_EMBED_MODEL:-text-embedding-v3}
+      # 员工级 REST 面 /pub/v1 的 OAuth 资源服务器(新 phoenix-doc-assistant 专家)。
+      # Issuer 空则 /pub/v1 不挂载(默认关闭);discovery 走容器内 keycloak 地址,与 MCP OAuth 一致。
+      PHX_API_OIDC_ISSUER: ${PHX_API_OIDC_ISSUER:-}
+      PHX_API_OIDC_AUDIENCE: ${PHX_API_OIDC_AUDIENCE:-phoenix-api}
+      PHX_API_OIDC_DISCOVERY_URL: ${PHX_API_OIDC_DISCOVERY_URL:-}
     networks: [internal]
 
   keycloak: # 授权服务器(MCP OAuth;测试阶段部署,AS 选型拍板后可替换或做企业账号联邦)

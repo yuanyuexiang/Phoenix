@@ -106,20 +106,26 @@ curl -s -X POST $ISSUER/protocol/openid-connect/token \
 # 期望输出包含 "phoenix-api"
 ```
 
-## 四、部署(Traefik 路由,生产)
+## 四、部署(生产)
 
-让 `/pub/v1` 直达 workflow 服务(:8081)。给 prod compose 的 workflow 服务加一条 Traefik 路由(**新增,不动 /mcp 与 /api 现有路由**):
+workflow 只在 `internal` 网、无 Traefik 标签;`/api` 是经 **admin 的 nginx 反代**到 workflow 的。
+所以 `/pub/v1` **不必动 Traefik、也不必把 workflow 挪到 matrix-network**,只需在同一个 nginx 里加一条
+反代(已改好 `frontend/nginx.conf`,与 `/api` 并列):
 
-```yaml
-labels:
-  - "traefik.enable=true"
-  - "traefik.http.routers.phx-pub.rule=Host(`phoenix.matrix-net.tech`) && PathPrefix(`/pub/v1`)"
-  - "traefik.http.routers.phx-pub.entrypoints=websecure"
-  - "traefik.http.routers.phx-pub.tls.certresolver=le"
-  - "traefik.http.services.phx-pub.loadbalancer.server.port=8081"
+```nginx
+location /pub/v1/ {
+    proxy_pass http://workflow:8081;
+    proxy_set_header Host $host;
+    proxy_read_timeout 300s;
+}
 ```
 
-并在 `/opt/phoenix/.env` 补上 `PHX_API_OIDC_ISSUER` / `PHX_API_OIDC_AUDIENCE`(见 §二)。
+`Host(phoenix.matrix-net.tech)` 的 catch-all 落到 admin,nginx 把 `/pub/v1/` 转给 workflow;
+`/mcp`、`/auth` 各有更具体的 PathPrefix 路由,互不影响。Authorization 头由 nginx 默认透传。
+
+改完需**重建 admin 镜像**(nginx.conf 打进镜像)。再在 `/opt/phoenix/.env` 补上
+`PHX_API_OIDC_ISSUER` / `PHX_API_OIDC_AUDIENCE` / `PHX_API_OIDC_DISCOVERY_URL`(见 §二;
+compose 的 workflow 服务已加好这三个变量的透传)。
 
 ## 五、客户端(专家包)配置
 
