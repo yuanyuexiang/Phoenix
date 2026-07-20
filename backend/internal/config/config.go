@@ -44,6 +44,13 @@ type Config struct {
 	OAuthAudience     string // 期望的 aud claim(本资源在授权服务器侧的标识)
 	OAuthResource     string // RFC 9728 资源标识 = MCP 端点对外 URL
 	OAuthScopes       string // 空格分隔的必需 scope,空 = 不检查
+
+	// 员工级公网 REST 面(/pub/v1)的 OAuth 资源服务器(新 phoenix-doc-assistant 专家用,
+	// Keycloak Device Flow + 每员工身份)。与上面 MCP 的 OAuth 各自独立配置、互不影响;
+	// 与既有 X-Access-Key(前端/mcp 用)也互不干扰。Issuer 为空 → /pub/v1 不挂载(默认关闭)。
+	APIOIDCIssuer       string // 期望的 iss claim(同一 Keycloak realm 即可,如 .../realms/phoenix)
+	APIOIDCDiscoveryURL string // 实际拉 discovery/JWKS 的地址;空 = Issuer(容器内网地址与 iss 不同时才设)
+	APIOIDCAudience     string // 期望的 aud claim(本 REST 面在授权服务器侧的标识,默认 phoenix-api)
 }
 
 func Load() Config {
@@ -77,6 +84,10 @@ func Load() Config {
 		OAuthAudience:     env("PHX_OAUTH_AUDIENCE", "phoenix-mcp"),
 		OAuthResource:     env("PHX_OAUTH_RESOURCE", "http://localhost:8080/mcp"),
 		OAuthScopes:       env("PHX_OAUTH_SCOPES", ""),
+
+		APIOIDCIssuer:       env("PHX_API_OIDC_ISSUER", ""),
+		APIOIDCDiscoveryURL: env("PHX_API_OIDC_DISCOVERY_URL", ""),
+		APIOIDCAudience:     env("PHX_API_OIDC_AUDIENCE", "phoenix-api"),
 	}
 }
 

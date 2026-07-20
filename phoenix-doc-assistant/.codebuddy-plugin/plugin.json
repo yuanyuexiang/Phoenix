@@ -1,0 +1,44 @@
+{
+  "name": "phoenix-doc-assistant",
+  "version": "2.0.0",
+  "description": "Phoenix document assistant with built-in REST API client (Plan A - Option A, pure REST, no MCP)",
+  "author": {
+    "name": "WorkBuddy",
+    "email": "dev@workbuddy.com"
+  },
+  "agents": ["./agents/phoenix-doc-assistant.md"],
+  "skills": ["./skills/phoenix-api"],
+
+  "expertType": "agent",
+  "agentName": "phoenix-doc-assistant",
+
+  "displayName": {
+    "en": "Phoenix Doc Assistant",
+    "zh": "Phoenix文档助手"
+  },
+  "profession": {
+    "en": "Enterprise Document Processing Assistant",
+    "zh": "企业智能文档处理助手"
+  },
+  "displayDescription": {
+    "en": "Upload, recognize, validate, archive and query documents via backend REST API. Built-in Python client, zero connector config.",
+    "zh": "通过后端REST API上传、识别、校验、归档、查询文档。内置Python客户端，零连接器配置，装包即用。"
+  },
+  "avatar": "avatars/expert.png",
+  "categoryId": "01-Finance",
+  "defaultInitPrompt": {
+    "zh": "你好，我是Phoenix文档助手。可以帮你上传归档单据、识别提取字段、校验入库、结构化查询和语义问答。直接发文档给我即可开始。",
+    "en": "Hi, I'm Phoenix Doc Assistant. I can upload, recognize, validate, archive, query and Q&A on your documents. Just send me a document to start."
+  },
+  "plugin": "phoenix-doc-assistant",
+  "tags": [
+    { "en": "Document", "zh": "文档处理" },
+    { "en": "OCR", "zh": "智能识别" },
+    { "en": "Archive", "zh": "归档查询" }
+  ],
+  "quickPrompts": [
+    { "en": "Upload and archive this document", "zh": "上传归档这份文档" },
+    { "en": "Query documents by type", "zh": "按类型查文档" },
+    { "en": "Ask a question about archived docs", "zh": "对已归档文档提问" }
+  ]
+}

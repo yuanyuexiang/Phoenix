@@ -5,12 +5,14 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/yuanyuexiang/phoenix/internal/config"
 	"github.com/yuanyuexiang/phoenix/internal/embed"
 	"github.com/yuanyuexiang/phoenix/internal/httpx"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
+	"github.com/yuanyuexiang/phoenix/internal/restapi"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
 	"github.com/yuanyuexiang/phoenix/internal/workflowapi"
@@ -56,19 +58,40 @@ func run() error {
 		slog.Warn("未配置 PHX_EMBED_ENDPOINT,知识库未启用(ask_document 将报未启用)")
 	}
 
+	pipe := &pipeline.Pipeline{
+		DB:            db,
+		Objects:       objects,
+		Registry:      registry,
+		Embedder:      embedder,
+		MinConfidence: cfg.MinConfidence,
+	}
+
+	// 既有的内部 REST 面(X-Access-Key;前端 + mcp 在用),行为不变。
 	handler := workflowapi.NewHandler(workflowapi.Options{
-		Pipeline: &pipeline.Pipeline{
-			DB:            db,
-			Objects:       objects,
-			Registry:      registry,
-			Embedder:      embedder,
-			MinConfidence: cfg.MinConfidence,
-		},
+		Pipeline:      pipe,
 		Registry:      registry,
 		DB:            db,
 		AdminPassword: cfg.AdminPassword,
 		// 识别已移至 WorkBuddy;后端不再依赖 parser/ai 服务,健康聚合只剩自身 + 存储。
 	})
+
+	// 员工级公网 REST 面 /pub/v1(Keycloak Bearer;新 phoenix-doc-assistant 专家用)。
+	// Issuer 未配置则不挂载 —— 老部署完全不受影响。挂载时用一个顶层 mux 按前缀分流,
+	// 既有 /api、/healthz 等仍全部交给 workflowapi,一个字节都不改。
+	if cfg.APIOIDCIssuer != "" {
+		verifier, err := restapi.NewVerifier(ctx, cfg.APIOIDCIssuer, cfg.APIOIDCDiscoveryURL, cfg.APIOIDCAudience)
+		if err != nil {
+			return err
+		}
+		restHandler := restapi.NewHandler(restapi.Options{Pipeline: pipe, DB: db, Verifier: verifier})
+		root := http.NewServeMux()
+		root.Handle("/pub/v1/", restHandler)
+		root.Handle("/", handler)
+		handler = root
+		slog.Info("员工级 REST 面 /pub/v1 已启用(Keycloak OAuth 资源服务器)", "issuer", cfg.APIOIDCIssuer, "audience", cfg.APIOIDCAudience)
+	} else {
+		slog.Info("未配置 PHX_API_OIDC_ISSUER,/pub/v1 员工级 REST 面未启用")
+	}
 
 	return httpx.Serve(addr, handler, "workflow 工作流引擎")
 }
