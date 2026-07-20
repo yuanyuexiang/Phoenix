@@ -21,7 +21,7 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 | 脚本 | 作用 | 对应端点 |
 |------|------|---------|
 | `scripts/config.py` | 配置文件读写 / 脱敏展示（`--show`/`--endpoint-check`/`--logout`） | - |
-| `scripts/auth.py` | **登录与 token**（`--check`/`--login-start`/`--login-poll`/`--whoami`/`--logout`） | Keycloak |
+| `scripts/auth.py` | **登录与 token**（`--check` / `--login`(弹浏览器登录) / `--whoami` / `--logout`） | Keycloak |
 | `scripts/api_client.py` | REST HTTP 客户端封装（各命令 import,自动带 Bearer） | - |
 | `scripts/setup.py` | 端点配置向导（手动终端用） | - |
 | `scripts/commands/upload.py` | 上传文档归档 | POST /pub/v1/documents |
@@ -52,7 +52,9 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 
 ## 鉴权方式
 
-- 登录:Keycloak **Device Authorization Grant**(`auth.py --login-start` → 员工浏览器批准 → `--login-poll`)。
+- 登录:**弹浏览器登录**(Authorization Code + PKCE)——`auth.py --login` 弹出 Keycloak 登录页,
+  员工在页面上输账号密码 → 浏览器跳回本机 loopback(`redirect_port`,默认 47100)拿 token。
+  用户始终在 **Keycloak 自己的页面**输密码(脚本不碰密码)。
 - 请求:`api_client.py` 每次自动取一个有效 access_token(过期用 refresh_token 续期),带
   `Authorization: Bearer <token>`。未登录 → 输出 `{"error":"NEEDS_LOGIN"}`。
 

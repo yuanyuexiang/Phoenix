@@ -65,7 +65,7 @@ def main():
         'tokens': existing.get('tokens', {}),
     })
     print(f"\n端点配置已保存到 {os.path.join(os.path.dirname(os.path.abspath(__file__)), '.config.json')}")
-    print("下一步:执行 `python3 auth.py --login-start` 用你的 Keycloak 账号登录。")
+    print("下一步:执行 `python3 auth.py --login` 用你的 Keycloak 账号登录。")
 
 
 if __name__ == '__main__':

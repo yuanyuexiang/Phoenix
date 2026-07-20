@@ -12,10 +12,10 @@
 - **结构化查询**：按类型/状态/关键词/字段值精确筛选
 - **语义问答**：对已归档文档正文做开放式问答
 
-## 鉴权:每员工身份(Keycloak Device Flow)
+## 鉴权:每员工身份(Keycloak)
 
-- 员工首次使用登录一次:`auth.py --login-start`(给出验证地址+验证码)→ 浏览器批准 → `auth.py --login-poll`。
-- 之后 refresh_token 自动续期;`auth.py --logout` 可切换账号。
+- **弹浏览器登录**:`auth.py --login` → 弹出 Keycloak 登录页,员工输账号密码 → 浏览器跳回本机 loopback 拿 token。
+- 之后 refresh_token 自动续期;`auth.py --logout` 切换账号。用户始终在 Keycloak 页面输密码(脚本不碰密码)。
 - 后端 `/pub/v1` 校验 token(aud=phoenix-api)→ 落 `uploaded_by`/`reviewed_by` 与 `audit_log`。
 - 详见 `docs/员工级REST-API-OAuth接入方案.md`(仓库根 docs/)。
 
@@ -67,8 +67,7 @@ phoenix-doc-assistant/
 ```bash
 cd skills/phoenix-api/scripts
 python3 auth.py --check              # NOT_CONFIGURED / NEEDS_LOGIN / CONFIGURED
-python3 auth.py --login-start        # 发起设备登录,拿验证地址+码
-python3 auth.py --login-poll         # 等待批准,落 token
+python3 auth.py --login              # 弹浏览器登录
 python3 auth.py --whoami             # 当前登录员工
 python3 config.py --show             # 查看配置(token 脱敏)
 python3 commands/upload.py --content-text "测试内容" --doc-type generic

@@ -61,13 +61,16 @@ PHX_API_OIDC_AUDIENCE=phoenix-api                                          # 默
 2. Capability config:
    - **Client authentication: Off**(公共客户端)
    - Authorization: Off
-   - Authentication flow:**只勾** `OAuth 2.0 Device Authorization Grant`;
-     其余(Standard flow / Direct access grants / Service accounts)**全部不勾**
-3. Save 后 → Clients → phoenix-cli → **Client scopes** → `phoenix-cli-dedicated` → Add mapper → By configuration → **Audience**
-   - Name: `phoenix-api-audience`
-   - Included Custom Audience: `phoenix-api`
-   - Add to access token: **On**
-4.(可选)确认员工账号能登录 realm(生产一般对接企业 OA/LDAP)。
+   - Authentication flow:**只勾 Standard flow**(浏览器登录 = 授权码);
+     **Direct access grants / Device / Service accounts 都不勾**(生产别开密码授权)
+3. Access settings(授权码回调):
+   - **Valid redirect URIs**:`http://127.0.0.1:47100/callback` 和 `http://localhost:47100/callback`
+     (端口须与客户端 `.config.json` 的 `redirect_port` 一致;loopback 回调走 http 是 RFC 8252 允许的)
+   - **Web origins**:`http://127.0.0.1:47100`、`http://localhost:47100`
+   - **Proof Key for Code Exchange (PKCE)**:S256
+4. Save 后 → Clients → phoenix-cli → **Client scopes** → `phoenix-cli-dedicated` → Add mapper → By configuration → **Audience**
+   - Name: `phoenix-api-audience`;Included Custom Audience: `phoenix-api`;Add to access token: **On**
+5.(可选)确认员工账号能登录 realm(生产一般对接企业 OA/LDAP)。
 
 ### 方式 B：kcadm 命令行
 
@@ -75,10 +78,12 @@ PHX_API_OIDC_AUDIENCE=phoenix-api                                          # 默
 # 进入 keycloak 容器(或本地 kcadm),先登录 admin
 kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password "$KC_ADMIN_PW"
 
-# 新增公共客户端,仅开 device flow
+# 新增公共客户端:开 standard flow(授权码),注册 loopback 回调,S256
 CID=$(kcadm.sh create clients -r phoenix -s clientId=phoenix-cli -s publicClient=true \
-  -s standardFlowEnabled=false -s directAccessGrantsEnabled=false -s serviceAccountsEnabled=false \
-  -s 'attributes."oauth2.device.authorization.grant.enabled"=true' -i)
+  -s standardFlowEnabled=true -s directAccessGrantsEnabled=false -s serviceAccountsEnabled=false \
+  -s 'redirectUris=["http://127.0.0.1:47100/callback","http://localhost:47100/callback"]' \
+  -s 'webOrigins=["http://127.0.0.1:47100","http://localhost:47100"]' \
+  -s 'attributes."pkce.code.challenge.method"=S256' -i)
 
 # 加 audience mapper → phoenix-api
 kcadm.sh create clients/$CID/protocol-mappers/models -r phoenix \
@@ -87,9 +92,9 @@ kcadm.sh create clients/$CID/protocol-mappers/models -r phoenix \
   -s 'config."id.token.claim"=false'
 ```
 
+> **登录只有一种**:浏览器登录(授权码+PKCE,`auth.py --login`,需 Standard flow + 上面的 redirect URI)。
 > **开发联调**:`deploy/keycloak/phoenix-realm.json` 已内置 `phoenix-cli`(`make oauth-up` 自动导入)。
-> 为了非交互冒烟,它额外开了 `directAccessGrantsEnabled`(用密码授权取 token 测后端);
-> **生产的 phoenix-cli 不要开 direct access grant**,只留 device flow。
+> 它额外开了 `directAccessGrantsEnabled` 仅为非交互冒烟取 token 验 aud;**生产不要开 direct access grant**。
 
 ### 验证 token 的 audience 正确
 

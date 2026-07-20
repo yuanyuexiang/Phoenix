@@ -53,15 +53,19 @@
     },
     {
       "clientId": "phoenix-cli",
-      "name": "phoenix-doc-assistant 专家(Device Flow,员工级 REST /pub/v1)",
+      "name": "phoenix-doc-assistant 专家(Auth Code+PKCE 浏览器登录,员工级 REST /pub/v1)",
       "enabled": true,
       "publicClient": true,
-      "standardFlowEnabled": false,
+      "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "redirectUris": [],
+      "redirectUris": [
+        "http://127.0.0.1:47100/callback",
+        "http://localhost:47100/callback"
+      ],
+      "webOrigins": ["http://127.0.0.1:47100", "http://localhost:47100"],
       "attributes": {
-        "oauth2.device.authorization.grant.enabled": "true"
+        "pkce.code.challenge.method": "S256"
       },
       "protocolMappers": [
         {

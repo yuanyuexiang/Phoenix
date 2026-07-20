@@ -3,6 +3,7 @@
   "oidc_issuer": "https://phoenix.matrix-net.tech/auth/realms/phoenix",
   "client_id": "phoenix-cli",
   "scope": "openid profile email",
+  "redirect_port": 47100,
   "timeout": 60,
   "verify_ssl": true,
   "tokens": {}

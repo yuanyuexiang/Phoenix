@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "oidc_issuer": "",         # Keycloak realm 的 issuer,如 https://.../auth/realms/phoenix
     "client_id": "",           # Device Flow 公共客户端 id,如 phoenix-cli
     "scope": "openid profile email",  # 申请的 scope(需能拿到 aud=phoenix-api,见 Keycloak 配置)
+    "redirect_port": 47100,    # 浏览器直接登录(auth code)时本机回调端口,须与 Keycloak 注册的 redirect_uri 一致
     "timeout": 60,             # 请求超时秒数(文档处理可能较慢)
     "verify_ssl": True,        # 是否校验 SSL 证书(内网自签名可设 False)
     "tokens": {}               # 登录后由 auth.py 写入:access_token/refresh_token/access_expires_at

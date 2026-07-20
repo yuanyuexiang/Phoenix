@@ -22,13 +22,13 @@
   },
   "displayDescription": {
     "en": "Upload, recognize, validate, archive and query documents via backend REST API. Built-in Python client, zero connector config.",
-    "zh": "通过后端REST API上传、识别、校验、归档、查询文档。内置Python客户端，零连接器配置，装包即用。"
+    "zh": "通过REST API上传识别校验归档查询文档，内置Python客户端，零配置即用。"
   },
   "avatar": "avatars/expert.png",
-  "categoryId": "01-Finance",
+  "categoryId": "12-IndustryConsultant",
   "defaultInitPrompt": {
-    "zh": "你好，我是Phoenix文档助手。可以帮你上传归档单据、识别提取字段、校验入库、结构化查询和语义问答。直接发文档给我即可开始。",
-    "en": "Hi, I'm Phoenix Doc Assistant. I can upload, recognize, validate, archive, query and Q&A on your documents. Just send me a document to start."
+    "zh": "上传归档这份文档",
+    "en": "Upload and archive this document"
   },
   "plugin": "phoenix-doc-assistant",
   "tags": [

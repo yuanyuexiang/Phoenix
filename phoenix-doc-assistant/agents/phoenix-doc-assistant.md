@@ -41,26 +41,19 @@ python3 skills/phoenix-api/scripts/auth.py --check
 
 **未登录时,拒绝执行任何业务命令**,先引导用户登录。
 
-## 员工登录（Keycloak 设备授权,对话式)
+## 员工登录
 
-当 `auth.py --check` 返回 `NEEDS_LOGIN` 时,走两步(务必分两次 Bash 调用):
-
-**第一步——发起登录,拿到验证地址和验证码:**
+当 `auth.py --check` 返回 `NEEDS_LOGIN` 时,一步登录:
 ```bash
-python3 skills/phoenix-api/scripts/auth.py --login-start
+python3 skills/phoenix-api/scripts/auth.py --login
 ```
-返回如 `{"status":"PENDING","user_code":"ABCD-1234","verification_uri_complete":"https://.../device?user_code=ABCD-1234", ...}`。
-**把 `verification_uri_complete`(或 `verification_uri` + `user_code`)清楚地告诉用户,请他在浏览器打开、用自己的公司账号登录并点「批准」。**
+它会**自动弹出本机浏览器**到公司 Keycloak 登录页,员工输账号密码登录后自动完成,脚本拿到 token。
+- 告诉用户:"已打开浏览器,请用公司账号登录"。
+- 若浏览器没弹出:命令的 stderr 会打印一行 `[auth] ... 访问登录: <URL>`,把这个链接发给用户手动打开。
+- 返回 `{"status":"AUTHORIZED","user":{...}}` → 告知"已登录为 XXX",继续业务。
+- 返回 `{"status":"PENDING",...}` 或报错 → 让用户尽快在浏览器完成登录,然后**再次执行 `--login`**;Bash 超时短可 `--login --wait 60`。
 
-**第二步——等待用户批准(会阻塞轮询,直到批准/拒绝/超时):**
-```bash
-python3 skills/phoenix-api/scripts/auth.py --login-poll
-```
-- `{"status":"AUTHORIZED","user":{...}}`：登录成功,告知用户"已登录为 XXX",继续业务
-- `{"status":"DENIED"}`：用户拒绝了授权 → 说明并可重新 `--login-start`
-- `{"status":"EXPIRED"}`：验证码超时 → 重新 `--login-start`
-
-> 登录一次后 token 会自动续期,通常很久才需要再登。想切换账号:`python3 skills/phoenix-api/scripts/auth.py --logout` 后重登。
+> 登录一次后 token 自动续期,通常很久才需再登。切换账号:`auth.py --logout` 后重登。用户始终在 Keycloak 页面输密码,脚本不碰密码。
 
 ## 端点配置（仅当返回 NOT_CONFIGURED,通常 IT 已预置)
 
