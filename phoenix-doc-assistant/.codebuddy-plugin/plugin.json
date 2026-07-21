@@ -7,7 +7,7 @@
     "email": "dev@workbuddy.com"
   },
   "agents": ["./agents/phoenix-doc-assistant.md"],
-  "skills": ["./skills/phoenix-api"],
+  "skills": ["./skills/phoenix-api", "./skills/doc-tamper-check"],
 
   "expertType": "agent",
   "agentName": "phoenix-doc-assistant",
