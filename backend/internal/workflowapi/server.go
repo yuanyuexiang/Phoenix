@@ -10,6 +10,8 @@
 //	POST /api/ask                      知识库语义问答
 //	GET  /api/doctypes                 单据类型配置(管理后台用)
 //	GET  /api/status                   组件健康聚合(服务状态页用)
+//	GET/POST /api/users, PATCH /api/users/{id}, POST /api/users/{id}/password
+//	                                   员工账号管理(见 users.go;/pub/v1 登录凭证来源)
 //	GET  /api/auth/status|check        鉴权探测(开放)
 //	GET  /healthz                      存活探测(开放)
 //
@@ -71,6 +73,10 @@ func NewHandler(opts Options) http.Handler {
 	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("GET /api/doctypes", s.doctypes)
 	mux.HandleFunc("GET /api/status", s.status)
+	mux.HandleFunc("GET /api/users", s.usersList)
+	mux.HandleFunc("POST /api/users", s.usersCreate)
+	mux.HandleFunc("PATCH /api/users/{id}", s.usersUpdate)
+	mux.HandleFunc("POST /api/users/{id}/password", s.usersResetPassword)
 
 	// 鉴权探测接口(开放,参考 Atlas 的 entry-gate 模式)
 	mux.HandleFunc("GET /api/auth/status", func(w http.ResponseWriter, _ *http.Request) {

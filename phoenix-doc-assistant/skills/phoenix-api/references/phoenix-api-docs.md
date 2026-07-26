@@ -5,7 +5,7 @@
 
 ## 基础信息
 - 协议：标准 HTTP REST（JSON over HTTPS）
-- 鉴权：`Authorization: Bearer {access_token}`(Keycloak 签发,aud=phoenix-api;由 auth.py 管理)
+- 鉴权：`Authorization: Bearer {access_token}`(平台自研账号体系签发的 JWT;由 auth.py 登录/续期管理,登录端点 `POST /pub/v1/auth/login`、续期 `POST /pub/v1/auth/refresh`)
 - Base URL：配置文件 `api_base_url` + `/pub/v1`(如 `https://phoenix.matrix-net.tech`)
 - Content-Type：`application/json`
 

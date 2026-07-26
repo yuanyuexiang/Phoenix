@@ -1,7 +1,7 @@
 // workflow REST API 调用封装。开发期经 next dev rewrites、生产经 nginx 反代到 workflow。
 // 所有请求自动携带访问密钥;收到 401 时清掉本地密钥并跳回登录页。
 import { authHeaders, clearAccessKey } from "./auth";
-import type { Component, Doc, DocType, Field, QueryResult } from "./types";
+import type { AppUser, Component, Doc, DocType, Field, QueryResult } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, {
@@ -46,3 +46,20 @@ export const deleteDocument = (id: string) =>
   request<{ ok: boolean }>(`/api/documents/${id}`, { method: "DELETE" });
 
 export const fetchStatus = () => request<{ components: Component[] }>("/api/status");
+
+/* ---------- 员工账号管理(/pub/v1 登录凭证来源) ---------- */
+
+export const listUsers = () => request<{ total: number; users: AppUser[] }>("/api/users");
+
+export const createUser = (body: { username: string; password: string; display_name?: string; email?: string }) =>
+  post<AppUser>("/api/users", body);
+
+export const updateUser = (id: number, body: { display_name?: string; email?: string; disabled?: boolean }) =>
+  request<AppUser>(`/api/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+export const resetUserPassword = (id: number, password: string) =>
+  post<{ ok: boolean }>(`/api/users/${id}/password`, { password });

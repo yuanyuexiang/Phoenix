@@ -1,17 +1,19 @@
-// Package restapi 是「员工级」公网 REST 面(/pub/v1)的 OAuth 2.1 资源服务器。
+// Package restapi 是「员工级」公网 REST 面(/pub/v1),自研账号体系(V1.3 取代 Keycloak)。
 //
-// 它服务新的 phoenix-doc-assistant 专家(WorkBuddy 内置 Python 脚本 + Keycloak Device Flow):
-// 每个请求必须携带 Keycloak 签发的 Bearer token,身份在这里校验 token 后取得
-// (**不信任任何客户端请求头**),据此落 documents.uploaded_by/reviewed_by 与 audit_log
-// —— 因此每个操作都能追溯到具体员工。
+// 它服务 phoenix-doc-assistant 专家(WorkBuddy 内置 Python 脚本):员工用账号口令
+// 登录换取本平台签发的 JWT(internal/userauth),之后每个请求携带 Bearer access token,
+// 身份在这里校验后取得(**不信任任何客户端请求头**),据此落
+// documents.uploaded_by/reviewed_by 与 audit_log —— 每个操作都能追溯到具体员工。
+// 员工账号由管理后台维护(workflowapi /api/users)。
 //
 // 与既有的 internal/workflowapi(X-Access-Key,前端在用)完全独立、路由前缀不重叠。
-// 业务逻辑全部复用 pipeline,
-// 本包只加薄薄一层 HTTP 解析 + Bearer 鉴权 + 审计。装配见 cmd/workflow/main.go
-// (Issuer 未配置时本面不挂载,老部署行为完全不变)。
+// 业务逻辑全部复用 pipeline,本包只加薄薄一层 HTTP 解析 + 鉴权 + 审计。
+// 装配见 cmd/workflow/main.go(PHX_AUTH_SECRET 未配置时本面不挂载)。
 //
-// 路由一览(全部要求有效 Bearer token):
+// 路由一览:
 //
+//	POST   /pub/v1/auth/login               账号口令 → access + refresh token(开放)
+//	POST   /pub/v1/auth/refresh             refresh token 续期(开放)
 //	GET    /pub/v1/me                       当前 token 对应的员工身份(客户端确认登录用)
 //	POST   /pub/v1/documents                上传归档(content_text/base64/file_url 三选一)
 //	POST   /pub/v1/documents/{id}/extract   返回该类型要抽的字段清单(WorkBuddy 据此识别)
@@ -19,6 +21,8 @@
 //	POST   /pub/v1/documents/{id}/save      落字段+正文并入库(权威校验)
 //	GET    /pub/v1/documents                结构化查询(doc_type/status/keyword/uploaded_by/field_filters/limit)
 //	POST   /pub/v1/ask                      知识库语义问答
+//
+// 除 auth/* 外全部要求有效 Bearer access token。
 package restapi
 
 import (
@@ -30,13 +34,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/identity"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/store"
+	"github.com/yuanyuexiang/phoenix/internal/userauth"
 )
 
 const maxFetchSize = 64 << 20 // file_url 下载上限 64MB
@@ -45,59 +49,33 @@ const maxFetchSize = 64 << 20 // file_url 下载上限 64MB
 type Options struct {
 	Pipeline *pipeline.Pipeline
 	DB       *store.DB
-	Verifier *Verifier
+	Auth     *userauth.Service
 }
 
-// NewHandler 组装 /pub/v1 路由 + Bearer 鉴权中间件。注意本面不暴露删除等破坏性操作
-// (删除/覆盖引导管理后台人工),员工侧只做上传/识别/校验/入库/查询/问答。
+// NewHandler 组装 /pub/v1 路由:auth/* 开放,其余套 Bearer 鉴权中间件。
+// 注意本面不暴露删除等破坏性操作(删除/覆盖引导管理后台人工),
+// 员工侧只做登录/上传/识别/校验/入库/查询/问答。
 func NewHandler(opts Options) http.Handler {
 	s := &server{opts: opts}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /pub/v1/me", s.me)
-	mux.HandleFunc("POST /pub/v1/documents", s.upload)
-	mux.HandleFunc("POST /pub/v1/documents/{id}/extract", s.extract)
-	mux.HandleFunc("POST /pub/v1/documents/{id}/validate", s.validate)
-	mux.HandleFunc("POST /pub/v1/documents/{id}/save", s.save)
-	mux.HandleFunc("GET /pub/v1/documents", s.query)
-	mux.HandleFunc("POST /pub/v1/ask", s.ask)
-	return s.authMiddleware(mux)
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /pub/v1/me", s.me)
+	protected.HandleFunc("POST /pub/v1/documents", s.upload)
+	protected.HandleFunc("POST /pub/v1/documents/{id}/extract", s.extract)
+	protected.HandleFunc("POST /pub/v1/documents/{id}/validate", s.validate)
+	protected.HandleFunc("POST /pub/v1/documents/{id}/save", s.save)
+	protected.HandleFunc("GET /pub/v1/documents", s.query)
+	protected.HandleFunc("POST /pub/v1/ask", s.ask)
+
+	root := http.NewServeMux()
+	root.HandleFunc("POST /pub/v1/auth/login", s.login)
+	root.HandleFunc("POST /pub/v1/auth/refresh", s.refresh)
+	root.Handle("/pub/v1/", s.authMiddleware(protected))
+	return root
 }
 
 type server struct {
 	opts Options
-}
-
-/* ---------- 鉴权(Bearer / OAuth 资源服务器) ---------- */
-
-// authMiddleware 要求每个请求携带有效 Keycloak Bearer token。身份从 token 校验后取得
-// 并存入 ctx;客户端自带的 X-Phx-User-* 头一律不采信(公网面不可信),避免身份伪造。
-func (s *server) authMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw := bearerToken(r.Header.Get("Authorization"))
-		if raw == "" {
-			s.unauthorized(w, "缺少 Bearer token(请先在客户端完成 Keycloak 登录)")
-			return
-		}
-		u, err := s.opts.Verifier.Verify(r.Context(), raw)
-		if err != nil {
-			s.unauthorized(w, "token 校验失败: "+err.Error())
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(identity.WithUser(r.Context(), u)))
-	})
-}
-
-func bearerToken(h string) string {
-	const p = "Bearer "
-	if len(h) >= len(p) && strings.EqualFold(h[:len(p)], p) {
-		return strings.TrimSpace(h[len(p):])
-	}
-	return ""
-}
-
-func (s *server) unauthorized(w http.ResponseWriter, msg string) {
-	w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
-	writeError(w, http.StatusUnauthorized, "AUTH_FAILED", msg)
 }
 
 /* ---------- 审计 ---------- */

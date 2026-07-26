@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """REST API 客户端封装：被各业务命令 import 使用。
 
-标准 HTTP + Keycloak Bearer Token(每员工身份)。token 由 auth.py 管理:
-每次请求自动取一个有效的 access_token(过期自动刷新);未登录则输出 NEEDS_LOGIN 让模型引导登录。
+标准 HTTP + 平台签发的 Bearer Token(每员工身份,自研账号体系)。token 由 auth.py 管理:
+每次请求自动取一个有效的 access_token(过期自动续期);未登录则输出 NEEDS_LOGIN 让模型引导登录。
 所有业务端点在后端的 /pub/v1/* 下(见 backend/internal/restapi)。
 """
 import json
@@ -24,7 +24,7 @@ class ApiClient:
     def __init__(self):
         cfg = cfg_mod.load_config()
         if not cfg or not cfg_mod.is_endpoint_configured():
-            print(json.dumps({"error": "NOT_CONFIGURED", "message": "端点未配置(api_base_url/oidc_issuer/client_id)"}))
+            print(json.dumps({"error": "NOT_CONFIGURED", "message": "端点未配置(api_base_url)"}))
             sys.exit(1)
         self.cfg = cfg
         self.base_url = cfg['api_base_url'].rstrip('/')
@@ -33,7 +33,7 @@ class ApiClient:
         try:
             return valid_access_token()
         except NeedsLogin as e:
-            print(json.dumps({"error": "NEEDS_LOGIN", "message": f"未登录或登录已失效: {e}。请先执行 Keycloak 设备登录"}))
+            print(json.dumps({"error": "NEEDS_LOGIN", "message": f"未登录或登录已失效: {e}。请先用员工账号登录(auth.py --login)"}))
             sys.exit(1)
         except AuthError as e:
             print(json.dumps({"error": "NETWORK_ERROR", "message": f"授权服务器不可达: {e}"}))
@@ -67,7 +67,7 @@ class ApiClient:
                 err_json = {"error": "HTTP_ERROR", "code": e.code, "message": err_body}
             if e.code == 401:
                 err_json.setdefault("error", "NEEDS_LOGIN")
-                err_json["message"] = "登录已失效,请重新执行设备登录。" + err_json.get("message", "")
+                err_json["message"] = "登录已失效,请重新登录(auth.py --login)。" + err_json.get("message", "")
             print(json.dumps(err_json, ensure_ascii=False))
             sys.exit(1)
         except urllib.error.URLError as e:

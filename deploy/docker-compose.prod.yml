@@ -4,9 +4,9 @@
 #
 # 拓扑(Traefik 已在服务器上运行,独占 80/443,回源网络 matrix-network):
 #   Traefik ──▶ admin(nginx :8084,SPA + /api、/pub/v1 反代 workflow)  Host(${DIP_DOMAIN})
-#          └──▶ keycloak(:8080,员工级 REST OAuth 授权服务器)          Host(${DIP_DOMAIN}) && PathPrefix(/auth)
 #   其余服务(workflow/postgres/minio/redis)仅内部网络互通,不暴露。
-#   识别/字段提取已移至 WorkBuddy 客户端;MCP 连接器已下线(V1.3,历史方案见 docs/archive/)。
+#   识别/字段提取已移至 WorkBuddy 客户端;MCP 连接器与 Keycloak 已下线
+#   (V1.3,员工鉴权改为自研账号+JWT,历史方案见 docs/archive/)。
 #
 # 注意:
 #   - 项目名/容器名统一 phoenix 前缀。若服务器上仍有旧的同名 compose 项目(phoenix-backend 等),
@@ -80,54 +80,10 @@ services:
       PHX_EMBED_ENDPOINT: ${PHX_EMBED_ENDPOINT:-}
       PHX_EMBED_API_KEY: ${PHX_EMBED_API_KEY:-}
       PHX_EMBED_MODEL: ${PHX_EMBED_MODEL:-text-embedding-v3}
-      # 员工级 REST 面 /pub/v1 的 OAuth 资源服务器(新 phoenix-doc-assistant 专家)。
-      # Issuer 空则 /pub/v1 不挂载(默认关闭);discovery 走容器内 keycloak 地址。
-      PHX_API_OIDC_ISSUER: ${PHX_API_OIDC_ISSUER:-}
-      PHX_API_OIDC_AUDIENCE: ${PHX_API_OIDC_AUDIENCE:-phoenix-api}
-      PHX_API_OIDC_DISCOVERY_URL: ${PHX_API_OIDC_DISCOVERY_URL:-}
+      # 员工级 REST 面 /pub/v1(自研账号 + JWT,phoenix-doc-assistant 专家用)。
+      # 密钥为空则 /pub/v1 不挂载;员工账号在管理后台「员工」页维护。
+      PHX_AUTH_SECRET: ${PHX_AUTH_SECRET:-}
     networks: [internal]
-
-  keycloak: # 授权服务器(员工级 REST /pub/v1 OAuth;测试阶段部署,AS 选型拍板后可替换或做企业账号联邦)
-    image: quay.io/keycloak/keycloak:26.5
-    container_name: phoenix-keycloak
-    restart: unless-stopped
-    command: start --import-realm
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      TZ: Asia/Shanghai
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?必须设置 Keycloak 管理员密码}
-      # 复用平台 Postgres;首次部署前需一次性建库(见 .env.prod.example 注释)。
-      # 主机名用容器名 phoenix-postgres 而非服务别名 postgres:keycloak 同时挂在共享的
-      # matrix-network 上,别的项目若也有 postgres 别名会被 DNS 解析到错误实例
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://phoenix-postgres:5432/keycloak
-      KC_DB_USERNAME: ${POSTGRES_USER:-phoenix}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      # TLS 由 Traefik 终止;/auth 子路径复用主域名,无需新增 DNS
-      KC_HTTP_ENABLED: "true"
-      KC_PROXY_HEADERS: xforwarded
-      KC_HTTP_RELATIVE_PATH: /auth
-      KC_HOSTNAME: https://phoenix.matrix-net.tech/auth
-      KC_HEALTH_ENABLED: "true"
-    volumes:
-      - ./keycloak/phoenix-realm.json:/opt/keycloak/data/import/phoenix-realm.json:ro
-    healthcheck: # 管理口 9000;注意健康路径也吃 KC_HTTP_RELATIVE_PATH(实测 /auth/health/ready)
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /auth/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-    networks: [internal, matrix-network]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.phoenix-keycloak.rule=Host(`phoenix.matrix-net.tech`) && PathPrefix(`/auth`)"
-      - "traefik.http.routers.phoenix-keycloak.entrypoints=websecure"
-      - "traefik.http.routers.phoenix-keycloak.service=phoenix-keycloak"
-      - "traefik.http.services.phoenix-keycloak.loadbalancer.server.port=8080"
-      - "traefik.http.routers.phoenix-keycloak.tls=true"
-      - "traefik.http.routers.phoenix-keycloak.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
 
   admin: # 前端管理后台(nginx 托管 SPA 并反代 /api 到 workflow),域名主入口
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-admin:${TAG:-latest}

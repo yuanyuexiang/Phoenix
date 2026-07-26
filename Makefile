@@ -23,20 +23,13 @@ smoke:
 smoke-rag:
 	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt -rag
 
-# ---- 员工级 REST OAuth 联调(docs/员工级REST-API-OAuth接入方案.md)----
-.PHONY: oauth-up oauth-down smoke-oauth
-oauth-up: # 开发用 Keycloak(realm/客户端/测试用户 alice、bob 自动导入,http://localhost:8180)
-	docker compose -f deploy/docker-compose.yml --profile oauth up -d keycloak
-
-oauth-down:
-	docker compose -f deploy/docker-compose.yml --profile oauth stop keycloak
-
-# OAuth 冒烟:走员工面 /pub/v1,workflow 须以
-# PHX_API_OIDC_ISSUER=http://localhost:8180/realms/phoenix 启动;
-# 先负向验证无 token 被拒,再用 alice 的 token 跑全流程并断言 uploaded_by
-smoke-oauth:
+# ---- 员工面 /pub/v1 鉴权冒烟(自研账号 + JWT,docs/员工级REST-API-鉴权方案.md)----
+# workflow 须以 PHX_AUTH_SECRET 启动(如 PHX_AUTH_SECRET=dev-secret make run-workflow);
+# 先负向验证无 token 被拒,再自动建号/登录跑全流程并断言 uploaded_by
+.PHONY: smoke-auth
+smoke-auth:
 	cd backend && go run ./cmd/smoke -sample ../samples/sample-generic.txt \
-		-oauth-issuer http://localhost:8180/realms/phoenix -oauth-user alice -oauth-pass alice123 -require-auth
+		-user alice -pass alice123 -require-auth
 
 # ---- 前端(frontend/,Next.js)----
 .PHONY: fe-install fe-dev fe-build

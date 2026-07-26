@@ -19,6 +19,16 @@ V1.3 起整体下线,对外接入改为**员工级 REST API(/pub/v1,OAuth 2.1/Ke
 | `文档处理专家_发布包.md` | 老专家「phoenix-doc-expert」的 WorkBuddy 发布物料 |
 | `phoenix-doc-expert-v2-design.md` | 老专家 v2 设计稿(未实施) |
 
+## Keycloak 员工鉴权方案(V1.3 下线,2026-07-22)
+
+`/pub/v1` 曾以 Keycloak 作为 OAuth 2.1 授权服务器(Auth Code + PKCE)。因团队不熟悉
+Keycloak 运维,改为**自研账号体系 + 平台签发 JWT**(见 `docs/员工级REST-API-鉴权方案.md`),
+Keycloak 容器、realm 配置与 `/auth` 路由随之删除。
+
+| 文件 | 原用途 |
+|------|--------|
+| `员工级REST-API-OAuth接入方案.md` | /pub/v1 + Keycloak(Device Flow/PKCE)员工级鉴权方案(代码 restapi/oidc.go 已删除) |
+
 对应代码(`backend/cmd/mcp`、`internal/mcpauth`、`internal/mcpserver`、
 `internal/clients`、`phoenix-doc-expert/`)已于同日删除,如需查阅请检出
 V1.3 之前的 git 历史(commit 68b0aae 及更早)。

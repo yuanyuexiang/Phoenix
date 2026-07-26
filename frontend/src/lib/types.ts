@@ -58,6 +58,16 @@ export interface Component {
   error?: string;
 }
 
+/** 员工账号(/pub/v1 登录凭证来源,管理见「员工」页)。 */
+export interface AppUser {
+  id: number;
+  username: string;
+  display_name: string;
+  email: string;
+  disabled: boolean;
+  created_at: string;
+}
+
 /** 特殊单据类型(不在 doctypes 配置内)的展示名。 */
 export const DOCTYPE_SPECIAL: Record<string, string> = {
   auto: "待识别",

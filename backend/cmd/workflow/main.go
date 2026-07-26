@@ -15,6 +15,7 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/restapi"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
+	"github.com/yuanyuexiang/phoenix/internal/userauth"
 	"github.com/yuanyuexiang/phoenix/internal/workflowapi"
 )
 
@@ -75,22 +76,18 @@ func run() error {
 		// 识别已移至 WorkBuddy;后端不再依赖 parser/ai 服务,健康聚合只剩自身 + 存储。
 	})
 
-	// 员工级公网 REST 面 /pub/v1(Keycloak Bearer;新 phoenix-doc-assistant 专家用)。
-	// Issuer 未配置则不挂载 —— 老部署完全不受影响。挂载时用一个顶层 mux 按前缀分流,
+	// 员工级公网 REST 面 /pub/v1(自研账号 + 平台签发 JWT;phoenix-doc-assistant 专家用)。
+	// PHX_AUTH_SECRET 未配置则不挂载 —— 老部署完全不受影响。挂载时用一个顶层 mux 按前缀分流,
 	// 既有 /api、/healthz 等仍全部交给 workflowapi,一个字节都不改。
-	if cfg.APIOIDCIssuer != "" {
-		verifier, err := restapi.NewVerifier(ctx, cfg.APIOIDCIssuer, cfg.APIOIDCDiscoveryURL, cfg.APIOIDCAudience)
-		if err != nil {
-			return err
-		}
-		restHandler := restapi.NewHandler(restapi.Options{Pipeline: pipe, DB: db, Verifier: verifier})
+	if cfg.AuthSecret != "" {
+		restHandler := restapi.NewHandler(restapi.Options{Pipeline: pipe, DB: db, Auth: userauth.New([]byte(cfg.AuthSecret))})
 		root := http.NewServeMux()
 		root.Handle("/pub/v1/", restHandler)
 		root.Handle("/", handler)
 		handler = root
-		slog.Info("员工级 REST 面 /pub/v1 已启用(Keycloak OAuth 资源服务器)", "issuer", cfg.APIOIDCIssuer, "audience", cfg.APIOIDCAudience)
+		slog.Info("员工级 REST 面 /pub/v1 已启用(自研账号 + JWT;员工账号见管理后台)")
 	} else {
-		slog.Info("未配置 PHX_API_OIDC_ISSUER,/pub/v1 员工级 REST 面未启用")
+		slog.Info("未配置 PHX_AUTH_SECRET,/pub/v1 员工级 REST 面未启用")
 	}
 
 	return httpx.Serve(addr, handler, "workflow 工作流引擎")

@@ -65,33 +65,10 @@ services:
       # PHX_EMBED_ENDPOINT: https://dashscope.aliyuncs.com/compatible-mode/v1
       # PHX_EMBED_API_KEY: ${DASHSCOPE_API_KEY}
       # PHX_EMBED_MODEL: text-embedding-v3   # 维度须与迁移里的 vector(1024) 一致
-      # 员工级 REST 面 /pub/v1 联调(先 make oauth-up 起 Keycloak,再解开注释重建 workflow):
-      # PHX_API_OIDC_ISSUER: http://localhost:8180/realms/phoenix        # token 的 iss,与 KC_HOSTNAME 一致
-      # PHX_API_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/phoenix  # 容器内实际取 discovery/JWKS 的地址
-      # PHX_API_OIDC_AUDIENCE: phoenix-api
+      # 员工级 REST 面 /pub/v1(自研账号 + JWT):设置密钥即启用,员工账号在管理后台维护
+      # PHX_AUTH_SECRET: dev-secret   # 生产必须换强随机长串
     ports:
       - "8081:8081"
-
-  keycloak: # 开发用授权服务器(员工级 REST /pub/v1 OAuth 联调,make oauth-up 启动)
-    image: quay.io/keycloak/keycloak:26.5
-    profiles: ["oauth"] # 默认 compose-up 不启动,零影响
-    command: start-dev --import-realm
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_HEALTH_ENABLED: "true"
-      # 固定 issuer 为宿主机地址:客户端从宿主机取 token,容器内 workflow 经
-      # PHX_API_OIDC_DISCOVERY_URL 走内网取 JWKS,iss 校验仍按此 URL
-      KC_HOSTNAME: http://localhost:8180
-    ports:
-      - "8180:8080" # 避开项目端口约定(8080-8084/5433/9100/9101/6380)与他项目占用
-    volumes:
-      - ./keycloak/phoenix-realm.json:/opt/keycloak/data/import/phoenix-realm.json:ro
-    healthcheck: # 健康端点在管理口 9000(容器内);镜像无 curl,用 bash /dev/tcp
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
 
   admin: # 前端管理后台(React + Ant Design,nginx 托管并反代 /api 到 workflow)
     build: ../frontend

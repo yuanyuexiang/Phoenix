@@ -4,15 +4,14 @@
 //	make infra-up && make run-workflow     # 或 make compose-up
 //	go run ./cmd/smoke [-addr http://localhost:8081]
 //
-// 默认走管理面 /api(X-Access-Key);带 -token 或 -oauth-* 时切到员工级 /pub/v1
-// (Bearer 鉴权,与 phoenix-doc-assistant 专家的真实调用路径一致,见 make smoke-oauth)。
-// workflow 须以 PHX_API_OIDC_ISSUER 启动,否则 /pub/v1 未挂载:
+// 默认走管理面 /api(X-Access-Key);带 -user/-pass 或 -token 时切到员工面 /pub/v1
+// (自研账号登录换 JWT,与 phoenix-doc-assistant 专家的真实调用路径一致,见 make smoke-auth)。
+// workflow 须以 PHX_AUTH_SECRET 启动,否则 /pub/v1 未挂载:
 //
-//	go run ./cmd/smoke -oauth-issuer http://localhost:8180/realms/phoenix \
-//	    -oauth-user alice -oauth-pass alice123 -require-auth
+//	go run ./cmd/smoke -user alice -pass alice123 -require-auth
 //
-// 取 token 走标准 OIDC discovery + password grant(Keycloak 测试客户端开了
-// Direct Access Grant),也可用 -token 直接传现成 token。
+// -user 模式会先用 X-Access-Key 经 /api/users 确保测试账号存在(已存在则重置口令),
+// 再走 /pub/v1/auth/login 登录 —— 一条命令即可自证"账号管理 + 登录 + 身份落库"整条链路。
 package main
 
 import (
@@ -34,26 +33,13 @@ func main() {
 	sample := flag.String("sample", "samples/sample-generic.txt", "样例文档路径")
 	rag := flag.Bool("rag", false, "追加知识库语义问答用例(workflow 须已配置 PHX_EMBED_*)")
 	accessKey := flag.String("access-key", "phoenix123", "管理面 /api 的 X-Access-Key(与 PHX_ADMIN_PASSWORD 一致)")
-	token := flag.String("token", "", "现成的 access token(优先于 -oauth-* 取 token;设置后走 /pub/v1)")
-	oauthIssuer := flag.String("oauth-issuer", "", "授权服务器 issuer,设置后用 password grant 取 token 并走 /pub/v1")
-	oauthClient := flag.String("oauth-client", "phoenix-smoke", "OAuth 客户端 ID(须开 Direct Access Grant)")
-	oauthUser := flag.String("oauth-user", "", "测试用户名")
-	oauthPass := flag.String("oauth-pass", "", "测试用户密码")
+	token := flag.String("token", "", "现成的 access token(优先于 -user/-pass;设置后走 /pub/v1)")
+	user := flag.String("user", "", "员工用户名,设置后先确保账号存在再登录 /pub/v1")
+	pass := flag.String("pass", "", "员工口令(与 -user 配套)")
 	requireAuth := flag.Bool("require-auth", false, "先验证 /pub/v1 无 token 会被拒绝(workflow 须已启用 /pub/v1)")
 	flag.Parse()
 
 	ctx := context.Background()
-
-	if *token == "" && *oauthIssuer != "" {
-		t, err := fetchToken(ctx, *oauthIssuer, *oauthClient, *oauthUser, *oauthPass)
-		if err != nil {
-			log.Fatalf("取 token 失败: %v", err)
-		}
-		*token = t
-		fmt.Println("== OAuth ==")
-		fmt.Printf("  ✓ 已从 %s 取得 %s 的 access token\n", *oauthIssuer, *oauthUser)
-	}
-
 	c := &restClient{base: strings.TrimRight(*addr, "/"), token: *token, accessKey: *accessKey}
 
 	if *requireAuth {
@@ -67,12 +53,22 @@ func main() {
 		fmt.Println("  ✓ 无 token 访问 /pub/v1 被拒绝(HTTP 401)")
 	}
 
+	if *token == "" && *user != "" {
+		if *pass == "" {
+			log.Fatal("请同时提供 -user 与 -pass")
+		}
+		ensureUser(ctx, c, *user, *pass)
+		c.token = login(ctx, c, *user, *pass)
+		fmt.Println("== 登录 ==")
+		fmt.Printf("  ✓ %s 已登录 /pub/v1(自研账号 + JWT)\n", *user)
+	}
+
 	// 员工面先自省身份(等价于客户端登录确认)
-	if *token != "" {
+	if c.token != "" {
 		me := c.call(ctx, http.MethodGet, "/me", nil)
 		fmt.Printf("  ✓ /pub/v1/me 身份: %v\n", me["display"])
-		if *oauthUser != "" && me["username"] != *oauthUser {
-			log.Fatalf("me.username 应为 %q,得到 %v", *oauthUser, me["username"])
+		if *user != "" && me["username"] != *user {
+			log.Fatalf("me.username 应为 %q,得到 %v", *user, me["username"])
 		}
 	}
 
@@ -90,11 +86,11 @@ func main() {
 	id := up["id"].(string)
 
 	// 身份落库断言:员工面 uploaded_by 应为登录用户
-	if *token != "" && *oauthUser != "" {
-		if up["uploaded_by"] != *oauthUser {
-			log.Fatalf("uploaded_by 应为 %q,得到 %v", *oauthUser, up["uploaded_by"])
+	if c.token != "" && *user != "" {
+		if up["uploaded_by"] != *user {
+			log.Fatalf("uploaded_by 应为 %q,得到 %v", *user, up["uploaded_by"])
 		}
-		fmt.Printf("\n✅ 身份落库:uploaded_by = %s\n", *oauthUser)
+		fmt.Printf("\n✅ 身份落库:uploaded_by = %s\n", *user)
 	}
 
 	// 2. 取字段清单(后端下发抽取指令,不识别)
@@ -134,8 +130,8 @@ func main() {
 
 	// 6. 按关键词查询(命中证明正文已落库)
 	q := url.Values{"keyword": {"采购项目"}, "limit": {"5"}}
-	if *token != "" && *oauthUser != "" {
-		q.Set("uploaded_by", *oauthUser)
+	if c.token != "" && *user != "" {
+		q.Set("uploaded_by", *user)
 	}
 	qres := c.call(ctx, http.MethodGet, "/documents?"+q.Encode(), nil)
 	if total, _ := qres["total"].(float64); total < 1 {
@@ -180,7 +176,7 @@ func main() {
 	}
 
 	face := "管理面 /api"
-	if *token != "" {
+	if c.token != "" {
 		face = "员工面 /pub/v1"
 	}
 	fmt.Printf("\n✅ 全流程跑通(%s):专家驱动写入/校验 + 结构化查询(含字段级过滤)%s\n", face, ragTip(*rag))
@@ -198,6 +194,70 @@ func queryWithFilters(docType string, filters []map[string]any) string {
 	raw, _ := json.Marshal(filters)
 	q := url.Values{"doc_type": {docType}, "field_filters": {string(raw)}}
 	return q.Encode()
+}
+
+/* ---------- 账号确保与登录(走管理面 /api/users + /pub/v1/auth/login) ---------- */
+
+// ensureUser 用 X-Access-Key 确保测试账号存在:不存在则创建,已存在则重置口令,
+// 保证随后的登录必然成功(同时覆盖了员工管理端点本身)。
+func ensureUser(ctx context.Context, c *restClient, username, password string) {
+	body := map[string]any{"username": username, "password": password, "display_name": "冒烟测试员工"}
+	status, data, err := c.adminJSON(ctx, http.MethodPost, "/api/users", body)
+	if err != nil {
+		log.Fatalf("创建测试账号失败: %v", err)
+	}
+	switch {
+	case status < 300:
+		fmt.Printf("  ✓ 已创建测试账号 %s\n", username)
+	case status == http.StatusConflict:
+		// 已存在 → 查 id 并重置口令
+		_, listRaw, err := c.adminJSON(ctx, http.MethodGet, "/api/users", nil)
+		if err != nil {
+			log.Fatalf("查询员工列表失败: %v", err)
+		}
+		var list struct {
+			Users []struct {
+				ID       int64  `json:"id"`
+				Username string `json:"username"`
+			} `json:"users"`
+		}
+		if err := json.Unmarshal(listRaw, &list); err != nil {
+			log.Fatalf("员工列表解析失败: %v", err)
+		}
+		for _, u := range list.Users {
+			if u.Username == username {
+				st, _, err := c.adminJSON(ctx, http.MethodPost, fmt.Sprintf("/api/users/%d/password", u.ID),
+					map[string]any{"password": password})
+				if err != nil || st >= 300 {
+					log.Fatalf("重置测试账号口令失败(HTTP %d): %v", st, err)
+				}
+				fmt.Printf("  ✓ 测试账号 %s 已存在,口令已重置\n", username)
+				return
+			}
+		}
+		log.Fatalf("账号 %s 显示已存在但列表中未找到", username)
+	default:
+		log.Fatalf("创建测试账号返回 HTTP %d: %s", status, truncate(string(data), 200))
+	}
+}
+
+// login 走员工面登录,返回 access token。
+func login(ctx context.Context, c *restClient, username, password string) string {
+	status, data, err := c.raw(ctx, http.MethodPost, c.base+"/pub/v1/auth/login",
+		map[string]any{"username": username, "password": password}, false)
+	if err != nil {
+		log.Fatalf("登录请求失败: %v", err)
+	}
+	if status != http.StatusOK {
+		log.Fatalf("登录失败 HTTP %d: %s", status, truncate(string(data), 200))
+	}
+	var out struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil || out.AccessToken == "" {
+		log.Fatalf("登录响应解析失败: %v", err)
+	}
+	return out.AccessToken
 }
 
 /* ---------- REST 客户端 ---------- */
@@ -236,7 +296,13 @@ func (c *restClient) call(ctx context.Context, method, path string, body map[str
 	return out
 }
 
-// raw 发送一次请求;withAuth=false 用于负向验证(不带任何凭证)。
+// adminJSON 强制走管理面(X-Access-Key),无论是否已持有员工 token。
+func (c *restClient) adminJSON(ctx context.Context, method, path string, body map[string]any) (int, []byte, error) {
+	admin := &restClient{base: c.base, accessKey: c.accessKey}
+	return admin.raw(ctx, method, c.base+path, body, true)
+}
+
+// raw 发送一次请求;withAuth=false 用于负向验证/登录(不带任何凭证)。
 func (c *restClient) raw(ctx context.Context, method, u string, body map[string]any, withAuth bool) (int, []byte, error) {
 	var rd io.Reader
 	if body != nil {
@@ -270,62 +336,6 @@ func (c *restClient) raw(ctx context.Context, method, u string, body map[string]
 		return 0, nil, err
 	}
 	return resp.StatusCode, data, nil
-}
-
-/* ---------- OAuth ---------- */
-
-// fetchToken 走标准 OIDC:discovery 拿 token_endpoint,再用 password grant 换 token
-// (不写死 Keycloak 路径,任何支持 Direct Access Grant 的 AS 均可)。
-func fetchToken(ctx context.Context, issuer, clientID, username, password string) (string, error) {
-	if username == "" || password == "" {
-		return "", fmt.Errorf("请同时提供 -oauth-user 与 -oauth-pass")
-	}
-	discoURL := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoURL, nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("授权服务器不可达(%s): %w", discoURL, err)
-	}
-	defer resp.Body.Close()
-	var disco struct {
-		TokenEndpoint string `json:"token_endpoint"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&disco); err != nil || disco.TokenEndpoint == "" {
-		return "", fmt.Errorf("解析 OIDC discovery 失败(HTTP %d)", resp.StatusCode)
-	}
-
-	form := url.Values{
-		"grant_type": {"password"},
-		"client_id":  {clientID},
-		"username":   {username},
-		"password":   {password},
-		"scope":      {"openid profile email"},
-	}
-	tokReq, err := http.NewRequestWithContext(ctx, http.MethodPost, disco.TokenEndpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", err
-	}
-	tokReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	tokResp, err := http.DefaultClient.Do(tokReq)
-	if err != nil {
-		return "", err
-	}
-	defer tokResp.Body.Close()
-	var out struct {
-		AccessToken      string `json:"access_token"`
-		Error            string `json:"error"`
-		ErrorDescription string `json:"error_description"`
-	}
-	if err := json.NewDecoder(tokResp.Body).Decode(&out); err != nil {
-		return "", err
-	}
-	if out.AccessToken == "" {
-		return "", fmt.Errorf("token 端点返回 HTTP %d: %s %s", tokResp.StatusCode, out.Error, out.ErrorDescription)
-	}
-	return out.AccessToken, nil
 }
 
 func truncate(s string, n int) string {

@@ -1,8 +1,8 @@
 # Phoenix 文档助手（phoenix-doc-assistant）
 
 企业智能文档处理专家包,平台唯一的 WorkBuddy 接入形态。内置 Python 脚本直连后端
-REST(`/pub/v1`),**每个操作追溯到具体员工**:每次请求携带员工本人经 Keycloak
-登录得到的 token(OAuth 2.1 Device Flow,自动续期)。
+REST(`/pub/v1`),**每个操作追溯到具体员工**:员工用本人账号口令登录,平台签发
+token 并自动续期(V1.3 起为自研账号体系,不再依赖 Keycloak)。
 (老专家 `phoenix-doc-expert` 与 MCP 连接器已于 V1.3 下线,历史方案见 `docs/archive/`。)
 
 ## 核心能力
@@ -13,17 +13,20 @@ REST(`/pub/v1`),**每个操作追溯到具体员工**:每次请求携带员工�
 - **结构化查询**：按类型/状态/关键词/字段值精确筛选
 - **语义问答**：对已归档文档正文做开放式问答
 
-## 鉴权:每员工身份(Keycloak)
+## 鉴权:每员工身份(自研账号 + JWT)
 
-- **弹浏览器登录**:`auth.py --login` → 弹出 Keycloak 登录页,员工输账号密码 → 浏览器跳回本机 loopback 拿 token。
-- 之后 refresh_token 自动续期;`auth.py --logout` 切换账号。用户始终在 Keycloak 页面输密码(脚本不碰密码)。
-- 后端 `/pub/v1` 校验 token(aud=phoenix-api)→ 落 `uploaded_by`/`reviewed_by` 与 `audit_log`。
-- 详见 `docs/员工级REST-API-OAuth接入方案.md`(仓库根 docs/)。
+- **账号登录**:`auth.py --login` → 终端提示输入员工用户名与口令(getpass 不回显)→
+  平台签发 access_token(短期)+ refresh_token(长期),存本地 `.config.json`(0600)。
+- 之后 refresh_token 自动续期;`auth.py --logout` 切换账号。
+- 员工账号由管理员在 Phoenix 管理后台「员工」页创建/重置口令/禁用;
+  改密或禁用后旧 token 立即失效。
+- 后端 `/pub/v1` 校验 token → 落 `uploaded_by`/`reviewed_by` 与 `audit_log`。
+- 详见 `docs/员工级REST-API-鉴权方案.md`(仓库根 docs/)。
 
 ## 运行时依赖
 
 **无需额外安装 Python。** WorkBuddy 桌面应用自带 Python 3.13。脚本只用标准库
-(urllib/json/os/sys/argparse/base64/ssl),零第三方依赖。
+(urllib/json/os/sys/argparse/base64/ssl/getpass),零第三方依赖。
 
 ## 目录结构
 
@@ -35,7 +38,7 @@ phoenix-doc-assistant/
 │   ├── SKILL.md
 │   ├── scripts/
 │   │   ├── config.py                    # 配置文件读写/脱敏
-│   │   ├── auth.py                      # Keycloak Device Flow 登录 + token 刷新
+│   │   ├── auth.py                      # 账号登录 + token 自动续期
 │   │   ├── api_client.py                # REST 客户端(自动带 Bearer)
 │   │   ├── setup.py                     # 端点配置向导(手动终端用)
 │   │   └── commands/                    # upload/extract_fields/validate/save/query/ask
@@ -48,17 +51,17 @@ phoenix-doc-assistant/
 
 ## 安装与使用
 
-### 1. 后端与 Keycloak 就绪
-- workflow 配 `PHX_API_OIDC_ISSUER`/`PHX_API_OIDC_AUDIENCE`,启用 `/pub/v1`。
-- Keycloak 新增 `phoenix-cli`(device flow)+ audience mapper `phoenix-api`。
-- 均见 `docs/员工级REST-API-OAuth接入方案.md`。
+### 1. 后端就绪
+- workflow 配 `PHX_AUTH_SECRET`(强随机长串),启用 `/pub/v1`。
+- 管理员在管理后台「员工」页为每位员工创建账号。
+- 均见 `docs/员工级REST-API-鉴权方案.md`。
 
 ### 2. 安装专家包
-将本目录打包为 zip,通过 WorkBuddy"导入专家包"安装。端点三要素建议 IT 预置进
+将本目录打包为 zip,通过 WorkBuddy"导入专家包"安装。端点(api_base_url)建议 IT 预置进
 `templates/config.template.json`(员工只需登录,不填任何密钥)。
 
 ### 3. 首次使用
-和专家对话,它会自动 `auth.py --check`;未登录则引导设备登录。之后即可:
+和专家对话,它会自动 `auth.py --check`;未登录则引导输入账号口令登录。之后即可:
 - "帮我上传归档这份报销单" + 附上图片
 - "查一下金额超过1万的报销单"
 - "那份合同里违约金怎么约定的？"
@@ -67,8 +70,8 @@ phoenix-doc-assistant/
 
 ```bash
 cd skills/phoenix-api/scripts
-python3 auth.py --check              # NOT_CONFIGURED / NEEDS_LOGIN / CONFIGURED
-python3 auth.py --login              # 弹浏览器登录
+python3 auth.py --check              # NOT_CONFIGURED / NEEDS_LOGIN / CONFIGURED user=xxx
+python3 auth.py --login              # 账号口令登录(交互式)
 python3 auth.py --whoami             # 当前登录员工
 python3 config.py --show             # 查看配置(token 脱敏)
 python3 commands/upload.py --content-text "测试内容" --doc-type generic

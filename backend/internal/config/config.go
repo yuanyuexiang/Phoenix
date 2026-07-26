@@ -33,12 +33,10 @@ type Config struct {
 	// 置空则关闭鉴权(仅建议本机联调)。
 	AdminPassword string
 
-	// 员工级公网 REST 面(/pub/v1)的 OAuth 资源服务器(phoenix-doc-assistant 专家用,
-	// Keycloak Device Flow + 每员工身份)。与既有 X-Access-Key(前端用)互不干扰。
-	// Issuer 为空 → /pub/v1 不挂载(默认关闭)。
-	APIOIDCIssuer       string // 期望的 iss claim(同一 Keycloak realm 即可,如 .../realms/phoenix)
-	APIOIDCDiscoveryURL string // 实际拉 discovery/JWKS 的地址;空 = Issuer(容器内网地址与 iss 不同时才设)
-	APIOIDCAudience     string // 期望的 aud claim(本 REST 面在授权服务器侧的标识,默认 phoenix-api)
+	// 员工级公网 REST 面(/pub/v1)的自研账号鉴权(phoenix-doc-assistant 专家用,
+	// 每员工账号 + 平台签发 JWT,见 internal/userauth)。与既有 X-Access-Key(前端用)互不干扰。
+	// 为空 → /pub/v1 不挂载(默认关闭);生产必须设为强随机长串,泄露/更换会使全部登录失效。
+	AuthSecret string // JWT 签名密钥(PHX_AUTH_SECRET)
 }
 
 func Load() Config {
@@ -63,9 +61,7 @@ func Load() Config {
 
 		AdminPassword: env("PHX_ADMIN_PASSWORD", "phoenix123"), // 默认密码,生产环境务必修改
 
-		APIOIDCIssuer:       env("PHX_API_OIDC_ISSUER", ""),
-		APIOIDCDiscoveryURL: env("PHX_API_OIDC_DISCOVERY_URL", ""),
-		APIOIDCAudience:     env("PHX_API_OIDC_AUDIENCE", "phoenix-api"),
+		AuthSecret: env("PHX_AUTH_SECRET", ""),
 	}
 }
 

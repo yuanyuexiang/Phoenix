@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """配置管理：读写本地 .config.json。
 
-与旧的共享 api_key 方案不同,本方案是「每员工身份」:
-  - 端点配置(api_base_url / oidc_issuer / client_id)是公司级常量,通常由 IT 预置进模板;
-  - 凭证不是一把共享 key,而是每个员工经 Keycloak Device Flow 登录后拿到的、
-    绑定到本人的 token(存在 tokens 字段,自动刷新)。见 auth.py。
+「每员工身份」方案(V1.3 起为自研账号体系,不再依赖 Keycloak):
+  - 端点配置(api_base_url)是公司级常量,通常由 IT 预置进模板;
+  - 凭证不是一把共享 key,而是每个员工用本人账号口令登录(/pub/v1/auth/login)后
+    拿到的、绑定到本人的 token(存在 tokens 字段,自动续期)。见 auth.py。
 
-本模块只管配置文件的读写与脱敏展示;设备登录/刷新/校验在 auth.py。
+本模块只管配置文件的读写与脱敏展示;登录/刷新/校验在 auth.py。
 """
 import json
 import os
@@ -17,13 +17,9 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.config.
 
 DEFAULT_CONFIG = {
     "api_base_url": "",        # 后端主机根地址,如 https://phoenix.matrix-net.tech(端点为 /pub/v1/...)
-    "oidc_issuer": "",         # Keycloak realm 的 issuer,如 https://.../auth/realms/phoenix
-    "client_id": "",           # Device Flow 公共客户端 id,如 phoenix-cli
-    "scope": "openid profile email",  # 申请的 scope(需能拿到 aud=phoenix-api,见 Keycloak 配置)
-    "redirect_port": 47100,    # 浏览器直接登录(auth code)时本机回调端口,须与 Keycloak 注册的 redirect_uri 一致
     "timeout": 60,             # 请求超时秒数(文档处理可能较慢)
     "verify_ssl": True,        # 是否校验 SSL 证书(内网自签名可设 False)
-    "tokens": {}               # 登录后由 auth.py 写入:access_token/refresh_token/access_expires_at
+    "tokens": {}               # 登录后由 auth.py 写入:access_token/refresh_token/access_expires_at/username
 }
 
 
@@ -44,11 +40,9 @@ def save_config(config):
 
 
 def is_endpoint_configured():
-    """端点三要素(api_base_url / oidc_issuer / client_id)是否齐全。"""
+    """端点(api_base_url)是否已配置。"""
     cfg = load_config()
-    if not cfg:
-        return False
-    return bool(cfg.get('api_base_url') and cfg.get('oidc_issuer') and cfg.get('client_id'))
+    return bool(cfg and cfg.get('api_base_url'))
 
 
 def get_tokens():

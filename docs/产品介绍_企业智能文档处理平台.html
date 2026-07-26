@@ -686,7 +686,7 @@
         <div class="vs-item"><b>规则校验 + 人工兜底</b><p>每个字段按 schema 规则服务端校验;不达标自动转人工审核,绝不带病入库。</p></div>
         <div class="vs-item"><b>按字段精确查,用自然语言问</b><p>"金额大于 10 万的合同"直接查;"付款周期怎么约定的"直接问。</p></div>
         <div class="vs-item"><b>加一个 YAML 就是一类新单据</b><p>字段清单与校验规则全部配置化,无需改一行代码。</p></div>
-        <div class="vs-item"><b>每一步记录到具体员工</b><p>OAuth 2.1 员工身份贯穿上传、审核、入库全程,审计日志完整留痕。</p></div>
+        <div class="vs-item"><b>每一步记录到具体员工</b><p>员工级身份贯穿上传、审核、入库全程,审计日志完整留痕。</p></div>
       </div>
     </div>
   </div>
@@ -708,7 +708,7 @@
         底层直连平台员工级 REST API。</p>
         <ul>
           <li>识别与字段提取由 WorkBuddy 客户端多模态大模型完成,充分利用终端 AI 算力</li>
-          <li>OAuth 2.1 员工登录:首次使用经企业统一认证登录一次,之后自动续期</li>
+          <li>员工账号登录:首次使用登录一次,凭证自动续期,无需重复输密码</li>
           <li>大文件走 file_url 直传,不占用对话上下文</li>
         </ul>
       </div>
@@ -733,7 +733,7 @@
       <div class="tool new rv" style="--d:.3s"><code>POST /ask</code><p>知识库语义问答:自然语言提问,返回原文片段与出处。</p></div>
     </div>
     <p class="tools-note rv">以上端点统一挂在员工级开放 API <code>/pub/v1</code> 下(另有 <code>GET /me</code> 身份自省),
-    OAuth 2.1 鉴权,构成对外稳定契约;新能力以新增端点方式扩展,已接入的专家无需改动。</p>
+    员工级鉴权,构成对外稳定契约;新能力以新增端点方式扩展,已接入的专家无需改动。</p>
   </div>
 </section>
 
@@ -886,7 +886,7 @@
           <ul class="chat-note rv" style="--d:.1s">
             <li><b>识别在端侧完成</b>发票内容由 WorkBuddy 客户端多模态大模型读取,平台按类型下发"该抽哪些字段"。</li>
             <li><b>入库前必过校验</b><code>POST /save</code> 在服务端权威校验,通过才落库——AI 的输出,平台把关。</li>
-            <li><b>操作追溯到人</b>每次调用携带员工本人的 OAuth token,上传人、审核人随文档落库。</li>
+            <li><b>操作追溯到人</b>每次调用携带员工本人的登录凭证,上传人、审核人随文档落库。</li>
             <li><b>问答给出处</b><code>POST /ask</code> 的每个回答都附原文片段与来源单据,可核可信。</li>
           </ul>
           <button class="replay rv" id="replayBtn" style="--d:.2s" type="button">↻ 重播对话</button>
@@ -1013,8 +1013,8 @@
       <div class="sec-card rv">
         <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.4 3.6-5.5 7-5.5s6.2 2.1 7 5.5" stroke-linecap="round"/></svg></div>
         <h3>员工级身份</h3>
-        <p>开放 API 以 <code>OAuth 2.1</code> 对接企业统一认证(Keycloak),每一次调用都识别到具体员工;
-        首次使用登录一次,token 自动续期,体验无感。</p>
+        <p>每位员工一个平台账号,开放 API 的每一次调用都识别到具体员工;
+        首次使用登录一次,凭证自动续期;禁用账号或改密即时生效。</p>
       </div>
       <div class="sec-card rv" style="--d:.08s">
         <div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4.5" y="10" width="15" height="9.5" rx="1.6"/><path d="M8 10V7.2a4 4 0 018 0V10" stroke-linecap="round"/><path d="M12 14v2.2" stroke-linecap="round"/></svg></div>
@@ -1064,7 +1064,7 @@
           <rect x="330" y="40" width="160" height="92" rx="10" fill="url(#boxg)" stroke="#2C3850"/>
           <text x="410" y="76" text-anchor="middle" fill="#EFF3F9" font-size="14.5" font-weight="600">员工级开放 API</text>
           <text x="410" y="96" text-anchor="middle" fill="#8B99AF" font-size="11" class="t-mono">/pub/v1 · 7 端点</text>
-          <text x="410" y="113" text-anchor="middle" fill="#64738C" font-size="10.5" class="t-mono">OAuth 2.1 · 审计留痕</text>
+          <text x="410" y="113" text-anchor="middle" fill="#64738C" font-size="10.5" class="t-mono">员工鉴权 · 审计留痕</text>
 
           <rect x="330" y="216" width="160" height="72" rx="10" fill="url(#boxg)" stroke="#2C3850"/>
           <text x="410" y="248" text-anchor="middle" fill="#EFF3F9" font-size="14" font-weight="600">管理后台</text>
@@ -1098,7 +1098,7 @@
     <div class="badges rv">
       <span class="badge">Go</span>
       <span class="badge">REST · /pub/v1</span>
-      <span class="badge">OAuth 2.1 / Keycloak</span>
+      <span class="badge">JWT 员工级鉴权</span>
       <span class="badge">PostgreSQL + pgvector</span>
       <span class="badge">MinIO</span>
       <span class="badge">Redis</span>

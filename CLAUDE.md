@@ -31,7 +31,7 @@ workflow/admin→SSH 部署→健康检查,测试阶段策略);PR 只跑测试�
 
 前端设计:三层主题 token(raw palette → `@theme inline` 语义色 → 组件),
 `<html data-theme>` 驱动 light/dark,企业蓝调性;NavRail 左侧图标导航
-(文档 `/`、审核 `/review`、单据类型 `/doctypes`、服务状态 `/status`),
+(文档 `/`、审核 `/review`、单据类型 `/doctypes`、员工 `/users`、服务状态 `/status`),
 审核页为「队列列 + 编辑区」三列式。生产走 `BUILD_STATIC=1` 静态导出 + nginx
 反代 `/api` 与 `/pub/v1`;开发用 next rewrites 代理(见 `frontend/next.config.ts`)。
 
@@ -39,12 +39,14 @@ workflow/admin→SSH 部署→健康检查,测试阶段策略);PR 只跑测试�
 - **管理面 `/api`**(前端用):除 `/healthz`、`/api/auth/*` 外均要求请求头 `X-Access-Key`
   等于 `PHX_ADMIN_PASSWORD`(默认 `phoenix123`,置空关闭鉴权)。前端登录页 `/login`
   把密钥存 localStorage 并随请求携带,401 统一跳回登录。共享密码,操作人只能记 'admin'。
-- **员工面 `/pub/v1`**(WorkBuddy 专家用,`internal/restapi`):OAuth 2.1 资源服务器,
-  校验 Keycloak Bearer token(`docs/员工级REST-API-OAuth接入方案.md`);身份从 token
-  取得(不信任请求头),落 `documents.uploaded_by/reviewed_by` 与 `audit_log`,
-  每个操作追溯到具体员工。`PHX_API_OIDC_ISSUER` 为空则 `/pub/v1` 不挂载(默认关闭)。
-  联调:`make oauth-up`(Keycloak,localhost:8180,alice/bob)+ `make smoke-oauth`。
-  生产 AS 选型仍【待确认】;`store` 迁移每次启动全量重放,新迁移必须幂等。
+- **员工面 `/pub/v1`**(WorkBuddy 专家用,`internal/restapi`):**自研账号体系 + 平台签发
+  JWT**(`internal/userauth`,V1.3 起取代 Keycloak,`docs/员工级REST-API-鉴权方案.md`);
+  员工账号在管理后台「员工」页维护(`/api/users`),登录 `/pub/v1/auth/login` 换
+  access(1h)+refresh(30d),身份从 token 取得(不信任请求头),落
+  `documents.uploaded_by/reviewed_by` 与 `audit_log`。改密/禁用靠 `users.token_version`
+  使旧 token 即时失效。`PHX_AUTH_SECRET` 为空则 `/pub/v1` 不挂载(默认关闭)。
+  联调:`PHX_AUTH_SECRET=dev-secret make run-workflow` + `make smoke-auth`。
+  `store` 迁移每次启动全量重放,新迁移必须幂等。
 
 ## 常用命令(全部在仓库根目录执行)
 
@@ -56,7 +58,7 @@ make infra-up                # 拉起 Postgres/MinIO/Redis 容器
 make run-workflow            # 前台起 workflow(唯一后端服务)
 make fe-dev                  # 前端 dev server(8084,/api 代理到 workflow)
 make smoke                   # 端到端冒烟(走管理面 /api):上传归档→回传字段+正文入库→检索
-make smoke-oauth             # 员工面 /pub/v1 冒烟(需 oauth-up + workflow 配 PHX_API_OIDC_ISSUER)
+make smoke-auth              # 员工面 /pub/v1 冒烟(workflow 须以 PHX_AUTH_SECRET 启动;自动建号+登录)
 
 make fe-install / fe-build   # 前端依赖 / 生产构建
 make compose-up              # 全套容器化(前端由 nginx 托管)
@@ -64,7 +66,7 @@ make compose-up              # 全套容器化(前端由 nginx 托管)
 
 **端口约定**(本机其他项目占用了 5432/8000/9001,宿主机端口整体错开):
 workflow **8081** · admin 前端 **8084** · Postgres **5433** · MinIO **9100/9101** ·
-Redis **6380** · Keycloak **8180**(联调时)。
+Redis **6380**。
 `backend/internal/config` 的默认值与这些端口一致,开箱即用。
 (mcp 8080 已随 V1.3 下线;parser 8082 / ai 8083 已随识别移至 WorkBuddy 而下线。)
 
@@ -81,7 +83,7 @@ WorkBuddy 专家 ─REST(/pub/v1,Bearer)→ backend/cmd/workflow
 
 - `backend/cmd/workflow` —— **唯一后端服务**,持有存储;cmd 只做装配。
   管理面 REST(handler/鉴权/健康聚合)在 `internal/workflowapi`;
-  员工面 REST(`/pub/v1`,OAuth 资源服务器 + 审计)在 `internal/restapi`;
+  员工面 REST(`/pub/v1`,自研账号鉴权 + 审计)在 `internal/restapi`(凭证层 `internal/userauth`);
   编排逻辑在 `internal/pipeline`:后端不识别,`Upload` 归档 → WorkBuddy 回传字段+正文 →
   `Save` 跑 `validate.Run` 服务端校验(通过=saved,不通过且未 force=needs_review 转人工)。
   `FieldBrief` 下发"该抽哪些字段"给 WorkBuddy;`doc_type` 由 WorkBuddy 判定
