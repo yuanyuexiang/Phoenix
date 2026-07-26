@@ -93,11 +93,13 @@ func (db *DB) UpdateDocument(ctx context.Context, d *model.Document) error {
 	if err != nil {
 		return err
 	}
+	// doc_type 一并持久化:类型由 WorkBuddy 在 save 阶段判定/覆盖(auto 上传→save 定型),
+	// 不落库会导致重启/重建后类型回退 auto(本体物化也会失配)。
 	_, err = db.pool.Exec(ctx, `
 		UPDATE documents
-		SET content_text = $2, status = $3, error = $4, fields = $5, issues = $6, reviewed_by = $7, updated_at = now()
+		SET doc_type = $2, content_text = $3, status = $4, error = $5, fields = $6, issues = $7, reviewed_by = $8, updated_at = now()
 		WHERE id = $1`,
-		d.ID, d.Text, d.Status, d.Error, fields, issues, d.ReviewedBy)
+		d.ID, d.DocType, d.Text, d.Status, d.Error, fields, issues, d.ReviewedBy)
 	return err
 }
 
