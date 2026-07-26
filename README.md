@@ -114,3 +114,4 @@ make smoke          # 另开终端:端到端冒烟(走管理面 /api 跑通全�
 - 单据类型与提取字段在 `backend/configs/doctypes/*.yaml` 中配置,新增单据类型无需改代码。
 - 知识库问答需配置 embedding 端点(`PHX_EMBED_ENDPOINT` 等,OpenAI 兼容均可);不配则知识库关闭。
 - 本机宿主端口整体错开避免冲突:各服务端口见上方架构表。
+
