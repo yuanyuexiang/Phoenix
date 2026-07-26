@@ -19,6 +19,8 @@ DEFAULT_CONFIG = {
     "api_base_url": "",        # 后端主机根地址,如 https://phoenix.matrix-net.tech(端点为 /pub/v1/...)
     "timeout": 60,             # 请求超时秒数(文档处理可能较慢)
     "verify_ssl": True,        # 是否校验 SSL 证书(内网自签名可设 False)
+    "return_scheme": "workbuddy://",  # 登录成功页跳回应用的 URL scheme;须与 WorkBuddy 注册的一致,
+                                      # 未注册时浏览器静默忽略(无副作用),置空 "" 则不尝试跳转
     "tokens": {}               # 登录后由 auth.py 写入:access_token/refresh_token/access_expires_at/username
 }
 

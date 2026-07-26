@@ -99,15 +99,42 @@ _SUCCESS_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"
 <title>登录成功</title><style>
 body{min-height:96vh;display:grid;place-items:center;font-family:-apple-system,"PingFang SC",sans-serif;background:#F6F8FB;color:#2B3A52}
 @media (prefers-color-scheme:dark){body{background:#0E141F;color:#CBD6E5}}
-.box{text-align:center}.ok{font-size:44px;color:#059669}p{margin-top:10px;font-size:14px}small{color:#8B98AC}
+.box{text-align:center}.ok{font-size:44px;color:#059669}p{margin-top:10px;font-size:15px}
+small{display:block;margin-top:8px;color:#8B98AC;line-height:1.8}
+a.back{display:inline-block;margin-top:16px;padding:9px 22px;border-radius:8px;background:#2563EB;color:#fff;
+text-decoration:none;font-size:14px}
+@media (prefers-color-scheme:dark){a.back{background:#5B8DEF}}
 </style></head><body><div class="box"><div class="ok">✓</div>
-<p>登录成功,正在返回 WorkBuddy…</p><small>本页将自动关闭;若未关闭可手动关闭</small></div>
-<script>setTimeout(function(){window.close()},1200)</script></body></html>"""
+<p>登录成功</p>
+<small id="tip">请关闭本页,返回 WorkBuddy 继续</small>
+<a class="back" id="back" href="__SCHEME__" style="display:none">返回 WorkBuddy</a></div>
+<script>
+/* 浏览器安全策略:脚本只能关闭由脚本打开的窗口,外部程序唤起的标签页
+   window.close() 会被忽略 —— 仍尽力一试,失败则保留手动提示。
+   __SCHEME__ 为 WorkBuddy 的 URL scheme(客户端配置 return_scheme):
+   已注册时自动跳回应用;未注册时浏览器静默忽略,按钮点了也无副作用。 */
+try{window.close()}catch(e){}
+var s="__SCHEME__";
+if(s){
+  document.getElementById("back").style.display="inline-block";
+  document.getElementById("tip").textContent="正在返回 WorkBuddy…(若未自动跳转,点击下方按钮或手动关闭本页)";
+  setTimeout(function(){try{location.href=s}catch(e){}},200);
+}
+setTimeout(function(){try{window.close()}catch(e){}},600)
+</script></body></html>"""
+
+
+def _success_html(cfg):
+    scheme = (cfg.get('return_scheme') if cfg else None)
+    if scheme is None:
+        scheme = ''
+    return _SUCCESS_HTML.replace('__SCHEME__', scheme)
 
 
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
     result = {}
     done = threading.Event()
+    success_html = _SUCCESS_HTML  # browser_login 启动前按配置渲染(return_scheme)
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
@@ -120,7 +147,7 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.end_headers()
-        self.wfile.write(_SUCCESS_HTML.encode('utf-8'))
+        self.wfile.write(_CallbackHandler.success_html.encode('utf-8'))
         _CallbackHandler.done.set()
 
     def log_message(self, *args):  # 静默访问日志
@@ -137,6 +164,7 @@ def browser_login(wait_seconds=_DEFAULT_WAIT):
 
     _CallbackHandler.result = {}
     _CallbackHandler.done.clear()
+    _CallbackHandler.success_html = _success_html(cfg)
     try:
         srv = http.server.HTTPServer(('127.0.0.1', _PREFERRED_PORT), _CallbackHandler)
     except OSError:

@@ -198,7 +198,7 @@ var loginTpl = template.Must(template.New("login").Parse(`<!doctype html>
 <form class="card" method="post" action="">
   <div class="mark">凤</div>
   <h1>Phoenix 员工登录</h1>
-  <div class="sub">登录后将自动返回 WorkBuddy</div>
+  <div class="sub">登录成功后请返回 WorkBuddy 继续</div>
   <label>用户名</label>
   <input type="text" name="username" autocomplete="username" autofocus required>
   <label>口令</label>

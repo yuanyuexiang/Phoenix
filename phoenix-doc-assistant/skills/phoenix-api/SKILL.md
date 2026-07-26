@@ -52,7 +52,7 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 
 - 登录:**弹浏览器登录**(默认)——`auth.py --login` 打开平台自己的登录页
   (`GET /pub/v1/auth/authorize`,授权码 + PKCE),员工在页面输入账号口令,
-  成功页自动关闭返回 WorkBuddy;口令不经过终端与对话。
+  成功页提示返回 WorkBuddy(浏览器允许时自动关闭);口令不经过终端与对话。
   无浏览器环境的后备:`--login --password` 终端交互输入(getpass 不回显)。
 - 请求:`api_client.py` 每次自动取一个有效 access_token(过期用 refresh_token 续期),带
   `Authorization: Bearer <token>`。未登录 → 输出 `{"error":"NEEDS_LOGIN"}`。

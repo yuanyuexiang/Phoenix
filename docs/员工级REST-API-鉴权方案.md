@@ -10,7 +10,7 @@
 员工(WorkBuddy 专家)── auth.py --login 弹浏览器 ──▶ GET /pub/v1/auth/authorize(平台登录页)
         │                    员工在页面输账号口令 ──▶ 302 授权码回调 http://127.0.0.1:port
         │                    POST /auth/token(code+PKCE)──▶ access(1h) + refresh(30d)
-        │                    成功页"正在返回 WorkBuddy"并自动关闭
+        │                    成功页提示返回 WorkBuddy(浏览器允许时自动关闭)
         └── 之后每请求带 Authorization: Bearer <access> ◀── 过期自动 POST /auth/refresh 续期
 终端后备:auth.py --login --password ──▶ POST /auth/login(口令直连;冒烟也走这条)
 管理员(管理后台「员工」页 /api/users) ──▶ 建号 / 重置口令 / 禁用(旧 token 立即失效)
@@ -39,7 +39,7 @@
 
 - `auth.py --login`(默认弹浏览器):起本机回调服务(优先 47100,占用则随机端口)→
   打开平台登录页 → 员工在**浏览器页面**输口令(不经过终端与对话)→ 授权码 + PKCE 换 token,
-  成功页自动关闭返回 WorkBuddy。`--login --password` 为终端后备(getpass 不回显)。
+  成功页提示返回 WorkBuddy。`--login --password` 为终端后备(getpass 不回显)。
   token 存 `.config.json`(0600);`--check` / `--whoami` / `--logout`。
 - `api_client.py` 每次请求自动取有效 access token,过期用 refresh 续期;
   续期也失败 → 输出 `NEEDS_LOGIN` 引导重登。

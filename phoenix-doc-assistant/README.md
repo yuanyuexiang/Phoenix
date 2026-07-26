@@ -16,8 +16,8 @@ token 并自动续期(V1.3 起为自研账号体系,不再依赖 Keycloak)。
 ## 鉴权:每员工身份(自研账号 + JWT)
 
 - **弹浏览器登录**:`auth.py --login` → 弹出 Phoenix 平台登录页(授权码 + PKCE,
-  登录页由平台自己出,无第三方身份组件)→ 员工在页面输入账号口令 → 成功页自动关闭
-  返回 WorkBuddy,脚本经本机回调拿到 access_token(短期)+ refresh_token(长期),
+  登录页由平台自己出,无第三方身份组件)→ 员工在页面输入账号口令 → 成功页提示返回
+  WorkBuddy(浏览器允许时自动关闭),脚本经本机回调拿到 access_token(短期)+ refresh_token(长期),
   存本地 `.config.json`(0600)。
 - 无浏览器环境的后备:`auth.py --login --password` 终端交互输入(getpass 不回显)。
 - 之后 refresh_token 自动续期;`auth.py --logout` 切换账号。
@@ -64,7 +64,7 @@ phoenix-doc-assistant/
 `templates/config.template.json`(员工只需登录,不填任何密钥)。
 
 ### 3. 首次使用
-和专家对话,它会自动 `auth.py --check`;未登录则弹浏览器引导登录(成功后自动返回)。之后即可:
+和专家对话,它会自动 `auth.py --check`;未登录则弹浏览器引导登录。之后即可:
 - "帮我上传归档这份报销单" + 附上图片
 - "查一下金额超过1万的报销单"
 - "那份合同里违约金怎么约定的？"

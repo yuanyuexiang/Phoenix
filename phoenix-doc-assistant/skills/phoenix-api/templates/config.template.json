@@ -2,5 +2,6 @@
   "api_base_url": "https://phoenix.matrix-net.tech",
   "timeout": 60,
   "verify_ssl": true,
+  "return_scheme": "workbuddy://",
   "tokens": {}
 }
