@@ -76,6 +76,7 @@ export interface FieldRule {
 export interface FieldSpec {
   name: string;
   label: string;
+  type?: string; // number | date(归一化落库)
   description?: string;
   aliases?: string[];
   rule?: FieldRule;
@@ -85,6 +86,11 @@ export interface DocType {
   name: string;
   title: string;
   description?: string;
+  /** 本体映射:该类型入库后物化的对象与主体字段(本体层启用时返回) */
+  ontology?: {
+    objects: OntologyType[];
+    entities: Record<string, OntologyType>;
+  };
   fields: FieldSpec[];
 }
 

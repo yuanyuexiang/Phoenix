@@ -287,11 +287,40 @@ func (s *server) ask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+// doctypeView 在单据类型 schema 上叠加本体映射(该类型入库后物化成什么对象、
+// 哪些字段是主体)——「单据类型」页借此成为"单据 → 实体"的完整契约视图。
+type doctypeView struct {
+	*schema.DocType
+	Ontology *doctypeOntology `json:"ontology,omitempty"`
+}
+
+type doctypeOntology struct {
+	Objects  []ontology.TypeInfo          `json:"objects"`  // 入库后物化的对象类型
+	Entities map[string]ontology.TypeInfo `json:"entities"` // 主体字段名 → 目标对象类型
+}
+
 func (s *server) doctypes(w http.ResponseWriter, _ *http.Request) {
-	types := make([]*schema.DocType, 0)
+	types := make([]doctypeView, 0)
 	for _, name := range s.opts.Registry.Names() {
 		dt, _ := s.opts.Registry.Get(name)
-		types = append(types, dt)
+		v := doctypeView{DocType: dt}
+		if s.opts.OntReg != nil {
+			ont := &doctypeOntology{Entities: map[string]ontology.TypeInfo{}}
+			for _, ot := range s.opts.OntReg.BySource(name) {
+				ont.Objects = append(ont.Objects, ontology.TypeInfo{Name: ot.Name, Title: ot.Title})
+			}
+			for field, target := range s.opts.OntReg.EntityHints(name) {
+				title := target
+				if ot, ok := s.opts.OntReg.Get(target); ok {
+					title = ot.Title
+				}
+				ont.Entities[field] = ontology.TypeInfo{Name: target, Title: title}
+			}
+			if len(ont.Objects) > 0 {
+				v.Ontology = ont
+			}
+		}
+		types = append(types, v)
 	}
 	writeJSON(w, types)
 }

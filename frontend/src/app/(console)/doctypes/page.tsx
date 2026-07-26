@@ -20,7 +20,7 @@ export default function DoctypesPage() {
 
   return (
     <>
-      <PageHeader title="单据类型" desc="每种单据要提取的字段与校验规则(configs/doctypes/*.yaml,新增类型无需改代码)" />
+      <PageHeader title="单据类型" desc="每种单据要提取的字段、校验规则与入库后物化的实体(configs/doctypes 与 configs/ontology,新增类型无需改代码)" />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {error && (
           <div className="mb-4 rounded-md border border-red-500/30 bg-red-100 px-4 py-3 text-sm text-red-700">
@@ -36,6 +36,21 @@ export default function DoctypesPage() {
                   <code className="text-xs text-ink-300">{dt.name}</code>
                 </div>
                 {dt.description && <p className="mt-1 text-xs text-ink-300">{dt.description}</p>}
+                {dt.ontology && dt.ontology.objects.length > 0 && (
+                  <p className="mt-1.5 text-xs text-ink-500">
+                    入库后物化:
+                    {dt.ontology.objects.map((o) => (
+                      <span key={o.name} className="ml-1.5 rounded bg-accent-100 px-1.5 py-0.5 text-accent-700">
+                        {o.title}对象
+                      </span>
+                    ))}
+                    {Object.keys(dt.ontology.entities).length > 0 && (
+                      <span className="ml-2 text-ink-300">
+                        关联 {[...new Set(Object.values(dt.ontology.entities).map((e) => e.title))].join(" / ")}
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
               <table className="w-full text-sm">
                 <thead>
@@ -50,6 +65,17 @@ export default function DoctypesPage() {
                     <tr key={f.name} className="border-t border-surface-300/60">
                       <td className="px-5 py-2.5">
                         <span className="text-ink-700">{f.label}</span>
+                        {f.type === "number" && (
+                          <span className="ml-1.5 rounded bg-surface-100 px-1.5 py-0.5 text-xs text-ink-500">数值</span>
+                        )}
+                        {f.type === "date" && (
+                          <span className="ml-1.5 rounded bg-surface-100 px-1.5 py-0.5 text-xs text-ink-500">日期</span>
+                        )}
+                        {dt.ontology?.entities[f.name] && (
+                          <span className="ml-1.5 rounded bg-accent-100 px-1.5 py-0.5 text-xs text-accent-700">
+                            → {dt.ontology.entities[f.name].title}
+                          </span>
+                        )}
                         <span className="block text-xs text-ink-300">{f.name}</span>
                       </td>
                       <td className="px-5 py-2.5 text-xs text-ink-500">
