@@ -64,7 +64,7 @@ func TestJWTExpiry(t *testing.T) {
 	s := New([]byte("k"))
 	s.now = func() time.Time { return time.Unix(1000, 0) }
 	access, _, _ := s.Issue("bob", "", "", 1)
-	s.now = func() time.Time { return time.Unix(1000 + int64(DefaultAccessTTL.Seconds()) + 1, 0) }
+	s.now = func() time.Time { return time.Unix(1000+int64(DefaultAccessTTL.Seconds())+1, 0) }
 	if _, err := s.Verify(access, TypAccess); err == nil {
 		t.Fatal("过期 token 不应通过")
 	}

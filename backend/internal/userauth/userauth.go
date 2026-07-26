@@ -96,13 +96,13 @@ const (
 
 // Claims 是本平台签发 token 的载荷。
 type Claims struct {
-	Sub  string `json:"sub"`  // username
-	Name string `json:"name,omitempty"`
+	Sub   string `json:"sub"` // username
+	Name  string `json:"name,omitempty"`
 	Email string `json:"email,omitempty"`
-	Typ  string `json:"typ"` // access | refresh
-	Ver  int    `json:"ver"` // users.token_version,改密/禁用后旧 token 失效
-	Iat  int64  `json:"iat"`
-	Exp  int64  `json:"exp"`
+	Typ   string `json:"typ"` // access | refresh
+	Ver   int    `json:"ver"` // users.token_version,改密/禁用后旧 token 失效
+	Iat   int64  `json:"iat"`
+	Exp   int64  `json:"exp"`
 }
 
 // Service 负责 token 的签发与校验。
