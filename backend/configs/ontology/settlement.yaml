@@ -1,0 +1,22 @@
+# 费用结算单对象 —— 关联申请员工。
+name: settlement
+title: 费用结算单
+display_property: doc_no
+properties:
+  - { name: doc_no,            label: 单据编号, type: string, required: true }
+  - { name: title,             label: 标题,     type: string }
+  - { name: settlement_amount, label: 结算金额, type: number }
+  - { name: form_date,         label: 填单日期, type: date }
+resolution_keys:
+  - [doc_no]
+links:
+  - { name: submitted_by, label: 申请人, to: employee }
+sources:
+  - doc_type: settlement
+    map:
+      doc_no:            doc_no
+      title:             title
+      settlement_amount: settlement_amount
+      form_date:         form_date
+    link_map:
+      applicant: { link: submitted_by, to: employee, property: name }

@@ -1,0 +1,22 @@
+# 借款单对象 —— 关联申请员工。
+name: loan
+title: 借款单
+display_property: doc_no
+properties:
+  - { name: doc_no,       label: 单据编号, type: string, required: true }
+  - { name: title,        label: 标题,     type: string }
+  - { name: total_amount, label: 合计金额, type: number }
+  - { name: doc_date,     label: 单据日期, type: date }
+resolution_keys:
+  - [doc_no]
+links:
+  - { name: submitted_by, label: 申请人, to: employee }
+sources:
+  - doc_type: loan
+    map:
+      doc_no:       doc_no
+      title:        title
+      total_amount: total_amount
+      doc_date:     doc_date
+    link_map:
+      applicant: { link: submitted_by, to: employee, property: name }

@@ -1,0 +1,42 @@
+# 借款/退补款单 —— 借款、退款或补款审批单(字段按已有单据实际抽取结果定义,待客户确认)。
+name: loan
+title: 借款单
+description: 借款/退补款审批单,含原借款、退补金额与明细。
+fields:
+  - name: doc_no
+    label: 单据编号
+    aliases: [借款单号, 编号]
+    rule: { required: true }
+  - name: title
+    label: 标题
+    aliases: [事由, 摘要]
+  - name: applicant
+    label: 申请人
+    aliases: [借款人, 经办人]
+    rule: { required: true }
+  - name: department
+    label: 部门
+  - name: doc_date
+    label: 单据日期
+    type: date
+  - name: total_amount
+    label: 合计金额
+    type: number
+  - name: original_loan
+    label: 原借款金额
+    type: number
+  - name: refund_or_supplement
+    label: 退/补款
+  - name: amount_in_words
+    label: 金额大写
+  - name: item_rent
+    label: 租金项目
+  - name: rent_amount
+    label: 租金金额
+    type: number
+  - name: deposit_amount
+    label: 押金金额
+    type: number
+  - name: cash_payment_amount
+    label: 现金支付金额
+    type: number

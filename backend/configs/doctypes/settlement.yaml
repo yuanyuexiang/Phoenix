@@ -1,0 +1,48 @@
+# 费用结算单 —— 差旅/包干等费用的结算审批单(字段按已有单据实际抽取结果定义,待客户确认)。
+name: settlement
+title: 费用结算单
+description: 费用结算审批单,含发票合计、结算金额、差旅/包干分项。
+fields:
+  - name: doc_no
+    label: 单据编号
+    aliases: [结算单号, 编号]
+    rule: { required: true }
+  - name: title
+    label: 标题
+    aliases: [事由, 摘要]
+  - name: applicant
+    label: 申请人
+    aliases: [经办人, 报销人]
+    rule: { required: true }
+  - name: department
+    label: 部门
+  - name: project_name
+    label: 项目名称
+    aliases: [项目]
+  - name: branch
+    label: 分部
+  - name: external_unit
+    label: 外部单位
+  - name: attachment_count
+    label: 附件张数
+  - name: form_date
+    label: 填单日期
+    type: date
+  - name: total_invoice_amount
+    label: 发票合计金额
+    type: number
+  - name: settlement_amount
+    label: 结算金额
+    type: number
+  - name: travel_subtotal
+    label: 差旅小计
+    type: number
+  - name: lump_sum_total
+    label: 包干合计
+    type: number
+  - name: accommodation_total
+    label: 住宿合计
+    type: number
+  - name: other_amount
+    label: 其他金额
+    type: number
