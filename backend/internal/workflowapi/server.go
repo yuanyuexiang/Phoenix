@@ -283,6 +283,7 @@ func (s *server) ask(w http.ResponseWriter, r *http.Request) {
 			DocumentID: h.DocumentID, Filename: h.Filename, DocType: h.DocType, Content: h.Content, Score: h.Score,
 		})
 	}
+	AttachChunkObjects(r, s.opts.DB, s.opts.OntReg, out.Chunks) // 命中片段附对象摘要
 	writeJSON(w, out)
 }
 

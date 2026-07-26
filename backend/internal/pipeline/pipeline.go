@@ -83,7 +83,14 @@ func (p *Pipeline) FieldBrief(ctx context.Context, id string) (api.FieldBrief, e
 		return api.FieldBrief{}, fmt.Errorf("文档 %s 不存在", id)
 	}
 	if dt, ok := p.Registry.Get(doc.DocType); ok {
-		return briefOf(dt), nil
+		brief := briefOf(dt)
+		if p.Ontology != nil { // 主体字段标记:提示专家抽完整规范名称(归一质量在源头提升)
+			hints := p.Ontology.Reg.EntityHints(dt.Name)
+			for i := range brief.Fields {
+				brief.Fields[i].Entity = hints[brief.Fields[i].Name]
+			}
+		}
+		return brief, nil
 	}
 	// 类型未定:给目录供 WorkBuddy 选型
 	brief := api.FieldBrief{DocType: doc.DocType}

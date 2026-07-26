@@ -107,7 +107,9 @@ python3 skills/phoenix-api/scripts/commands/extract_fields.py --document-id {文
 
 拿到字段清单后,**你自己从原件完成识别**:
 1. 按清单逐项抽出字段值（找不到的留空,不要编造）
-2. 完整转写文档正文（保留编号、金额、条款等关键信息）
+2. 带 `"entity"` 标记的是**主体字段**(将归一为公司/员工等实体对象),务必抄**完整规范名称**,
+   不要用简称或截断(如"凤凰软件服务有限公司"而非"凤凰软件")
+3. 完整转写文档正文（保留编号、金额、条款等关键信息）
 
 把识别出的类型和字段以 Markdown 表格展示给用户。
 
@@ -152,7 +154,9 @@ python3 skills/phoenix-api/scripts/commands/save.py \
 - `--content-text`：你转写的完整正文
 
 脚本返回文档视图,看 `status`:
-- **`saved`**：入库成功。把字段值以 Markdown 表格（字段名 | 字段值）汇报给用户,并告知文档 ID
+- **`saved`**：入库成功。把字段值以 Markdown 表格（字段名 | 字段值）汇报给用户,并告知文档 ID。
+  响应中的 `ontology` 是实体物化摘要:`objects` 转述为"已关联对象:公司「××」、员工「××」";
+  **`warnings` 必须原文转述给用户**(如"发票已被另外 N 份单据引用,疑似重复报销"),这是风控提示,不可吞掉
 - **`needs_review`**：把 `issues` 和当前值列给用户,请其确认或给出修正值;拿到修正后带完整 `--fields` 重新 save。**只有用户明确说"直接入库/强制入库"时才加 `--force`**
 
 > 入库前想先看校验结果,可调 validate 预校验（不入库）:
@@ -192,10 +196,33 @@ python3 skills/phoenix-api/scripts/commands/query.py --doc-type reimbursement --
 ```bash
 python3 skills/phoenix-api/scripts/commands/ask.py --question '{问题}' --doc-type {类型可选} --limit 5
 ```
-脚本调用 `POST /pub/v1/ask`,返回 `{"total":N,"chunks":[{"document_id","filename","doc_type","content","score"}...]}`。
-你据 `chunks` 作答,并**注明信息来自哪份文件（filename）**。
+脚本调用 `POST /pub/v1/ask`,返回 `{"total":N,"chunks":[{"document_id","filename","doc_type","content","score","objects":[...]}...]}`。
+你据 `chunks` 作答,并**注明信息来自哪份文件（filename）**;`objects` 是来源文档关联的
+实体摘要(公司/员工等),作答时可带上实体全景(如"该发票来自中国石化,你与它另有 2 份单据")。
 
-> **如何选查询工具**：要精确筛选/统计/列全（按字段、按类型、计数）用 `query.py`;要理解正文内容/开放问答用 `ask.py`。
+### Phase 6: 实体查询(对象层)
+
+单据入库后,平台把其中的**业务实体**(公司/发票/合同/报销单/员工)跨文档归一为对象并建立关系。
+问题落在"某个实体的全貌/关联/聚合"时,用对象查询比文档查询更准确:
+
+```bash
+python3 skills/phoenix-api/scripts/commands/objects.py --type company --keyword 中石化
+python3 skills/phoenix-api/scripts/commands/objects.py --type reimbursement --property-filter 'total_amount,gt,10000'
+python3 skills/phoenix-api/scripts/commands/objects.py --id {对象ID}    # 详情:关联关系+证据单据
+```
+
+对象类型与属性速查见 `skills/phoenix-api/references/ontology-objects.md`。
+编排建议:先按名称锁定实体(多个候选让用户选)→ 看详情拿关联(links)与证据单据(documents)→
+需要单据细节再用 query.py/正文理解再用 ask.py。
+
+> **如何选查询工具(三选一)**:
+> | 问题类型 | 工具 | 例 |
+> |---|---|---|
+> | 单据检索(按字段/状态/类型筛选文档) | `query.py` | "上月待审核的报销单" |
+> | 实体/关系/聚合(某公司/某人的全貌) | `objects.py` | "中石化开了几张发票""黄智超报了几笔" |
+> | 开放式正文理解 | `ask.py` | "合同里付款周期怎么约定" |
+>
+> 对象的**合并/修正/删除不由你执行**,引导用户到管理后台「对象」页人工处理。
 
 ## 输出规范
 

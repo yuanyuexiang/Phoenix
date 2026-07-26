@@ -30,7 +30,8 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 | `scripts/commands/validate.py` | 预校验 | POST /pub/v1/documents/{id}/validate |
 | `scripts/commands/save.py` | 入库 | POST /pub/v1/documents/{id}/save |
 | `scripts/commands/query.py` | 结构化查询 | GET /pub/v1/documents |
-| `scripts/commands/ask.py` | 语义问答 | POST /pub/v1/ask |
+| `scripts/commands/ask.py` | 语义问答(命中片段附实体摘要) | POST /pub/v1/ask |
+| `scripts/commands/objects.py` | **实体查询**(跨文档归一的对象/关系/证据;类型速查见 references/ontology-objects.md) | GET /pub/v1/objects、/objects/{id} |
 
 ## 配置文件位置
 
@@ -57,6 +58,11 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 - 请求:`api_client.py` 每次自动取一个有效 access_token(过期用 refresh_token 续期),带
   `Authorization: Bearer <token>`。未登录 → 输出 `{"error":"NEEDS_LOGIN"}`。
 - 管理员改密/禁用账号后旧 token 立即失效,客户端会提示重新登录。
+
+## 查询路由(三选一)
+
+单据检索 → query.py;**实体/关系/聚合 → objects.py**;开放式正文理解 → ask.py。
+对象的合并/修正不由脚本执行(引导管理后台)。
 
 ## 新增业务命令
 

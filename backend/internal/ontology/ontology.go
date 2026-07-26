@@ -205,6 +205,23 @@ func (r *Registry) BySource(docType string) []*ObjectType {
 	return r.bySource[docType]
 }
 
+// EntityHints 返回某单据类型的「字段名 → 目标对象类型」映射,
+// 供 extract 字段清单标记主体字段(提示专家抽完整规范名称)。
+func (r *Registry) EntityHints(docType string) map[string]string {
+	out := map[string]string{}
+	for _, ot := range r.bySource[docType] {
+		for _, s := range ot.Sources {
+			if s.DocType != docType {
+				continue
+			}
+			for docField, lm := range s.LinkMap {
+				out[docField] = lm.To
+			}
+		}
+	}
+	return out
+}
+
 // TypeInfo 是对象类型摘要(前端 tabs 用)。
 type TypeInfo struct {
 	Name  string `json:"name"`

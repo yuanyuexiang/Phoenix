@@ -2,7 +2,8 @@
 
 > 目标版本 V1.4。**P0+P1 已实施(2026-07-26):字段类型化、reimbursement 单据类型、
 > 本体加载/物化/重建、objects 端点、前端对象页与审核台联动、smoke 断言全绿。**
-> P2(人工合并队列)/P3(Action)/P4(专家包接入)待启动。践行 Palantir Ontology 的**模式**而非复刻 Foundry:
+> **P4 专家包接入已实施(2026-07-27)**:objects.py 命令、agent MD 三选一路由、
+> extract 主体字段 entity 标记、ask 命中附实体摘要。P2(人工合并队列)/P3(Action)待启动。践行 Palantir Ontology 的**模式**而非复刻 Foundry:
 > 对象/链接/Action 作为语义层压在现有文档流水线之上,沿用 Phoenix 三条基因 ——
 > **一切皆 YAML 配置、Postgres 承载、REST 以新增端点扩展契约**(既有 7 个端点不动)。
 

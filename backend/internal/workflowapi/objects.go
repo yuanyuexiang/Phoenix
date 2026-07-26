@@ -92,6 +92,33 @@ func (s *server) ontologyRebuild(w http.ResponseWriter, r *http.Request) {
 
 /* ---------- 两个 API 面共用的查询装配(restapi 亦调用) ---------- */
 
+// AttachChunkObjects 给语义问答命中片段附上来源文档的对象摘要(本体层启用时)。
+// 同一文档只查一次;失败静默跳过(问答主流程优先)。
+func AttachChunkObjects(r *http.Request, db *store.DB, reg *ontology.Registry, chunks []api.ChunkHit) {
+	if reg == nil {
+		return
+	}
+	cache := map[string][]api.OntologyObjectRef{}
+	for i := range chunks {
+		id := chunks[i].DocumentID
+		refs, ok := cache[id]
+		if !ok {
+			objs, err := db.ListObjectsByDocument(r.Context(), id)
+			if err == nil {
+				for _, o := range objs {
+					title := o.Type
+					if ot, found := reg.Get(o.Type); found {
+						title = ot.Title
+					}
+					refs = append(refs, api.OntologyObjectRef{Type: o.Type, Title: title, ID: o.ID, Display: o.DisplayName})
+				}
+			}
+			cache[id] = refs
+		}
+		chunks[i].Objects = refs
+	}
+}
+
 // ListObjectsForAPI 解析查询参数并执行对象列表查询(管理面与员工面共用)。
 func ListObjectsForAPI(r *http.Request, db *store.DB) ([]store.OntObject, error) {
 	q := r.URL.Query()

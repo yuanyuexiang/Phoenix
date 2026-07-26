@@ -80,12 +80,15 @@ type AskRequest struct {
 }
 
 // ChunkHit 是知识库检索命中的一条正文片段(与 store.ChunkHit 对齐)。
+// Objects 是来源文档物化出的本体对象摘要(本体层启用时附带),
+// 让语义问答的回答自带实体上下文与出处。
 type ChunkHit struct {
-	DocumentID string  `json:"document_id"`
-	Filename   string  `json:"filename"`
-	DocType    string  `json:"doc_type"`
-	Content    string  `json:"content"`
-	Score      float64 `json:"score"`
+	DocumentID string              `json:"document_id"`
+	Filename   string              `json:"filename"`
+	DocType    string              `json:"doc_type"`
+	Content    string              `json:"content"`
+	Score      float64             `json:"score"`
+	Objects    []OntologyObjectRef `json:"objects,omitempty"`
 }
 
 // AskResult 是 POST /api/ask 的响应体。
@@ -108,7 +111,8 @@ type FieldBrief struct {
 type BriefField struct {
 	Name        string   `json:"name"`
 	Label       string   `json:"label"`
-	Type        string   `json:"type,omitempty"` // number/date:抽取时注意可解析的规范写法
+	Type        string   `json:"type,omitempty"`   // number/date:抽取时注意可解析的规范写法
+	Entity      string   `json:"entity,omitempty"` // 主体字段:值将归一为该类型对象(如 company),务必抽完整规范名称
 	Description string   `json:"description,omitempty"`
 	Aliases     []string `json:"aliases,omitempty"`
 	Required    bool     `json:"required,omitempty"`

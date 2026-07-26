@@ -60,7 +60,8 @@ GET 参数:`redirect_uri`(仅限本机回环)、`state`、`code_challenge`(+`cod
 ### 2. POST /pub/v1/documents/{id}/extract（取字段清单）
 无 body。响应 FieldBrief:
 - 类型未定:`{"doc_type":"auto","catalog":[{"name","title","description"}...]}`
-- 类型已定:`{"doc_type","title","fields":[{"name","label","aliases","required","pattern","enum"}...]}`
+- 类型已定:`{"doc_type","title","fields":[{"name","label","type","entity","aliases","required","pattern","enum"}...]}`
+  `type`=number/date 时按可解析规范写法抽;**`entity` 标记的主体字段务必抽完整规范名称**(将归一为实体对象)。
 
 ### 3. POST /pub/v1/documents/{id}/validate（预校验,不入库）
 请求 body:`{"doc_type": "...", "fields": [{"name","value"}...]}`
@@ -84,15 +85,27 @@ query string 参数:`doc_type` / `status` / `keyword` / `uploaded_by` / `limit` 
 运算符:`eq`/`ne`/`gt`/`gte`/`lt`/`lte`/`contains`/`in`。
 响应:`{"total":N,"documents":[DocumentView...]}`。
 
-### 6. POST /pub/v1/ask（语义问答）
+### 6. GET /pub/v1/objects（实体查询)与 GET /pub/v1/objects/{id}（详情）
+
+参数:`type`/`keyword`/`property_filters`(JSON,同 field_filters 语法)/`limit`。
+列表返回 `{"total","objects":[{id,object_type,display_name,properties,version}]}`;
+详情返回 `{"object","type_title","links_out","links_in","documents"}`(关系两端带 display,
+documents 为证据单据)。另有 `GET /pub/v1/documents/{id}/objects` 查某单据物化出的对象。
+对象类型速查:references/ontology-objects.md。**只读**,合并/修正引导管理后台。
+
+### 7. POST /pub/v1/ask（语义问答）
 请求 body:`{"question","doc_type"?,"limit"?}`
-响应:`{"total":N,"chunks":[{"document_id","filename","doc_type","content","score"}...]}`。
+响应:`{"total":N,"chunks":[{"document_id","filename","doc_type","content","score","objects":[{type,title,id,display}...]}...]}`。
+`objects` 为来源文档关联的实体摘要(本体层启用时附带),作答可带实体全景。
 (知识库未配置 embedding 时返回错误提示"未启用"。)
 
 ## 常见文档类型（doc_type,以后端 configs/doctypes/*.yaml 为准）
 | 类型 | 说明 |
 |------|------|
 | generic | 通用单据 |
-| invoice | 发票 |
+| invoice | 增值税发票 |
+| reimbursement | 报销单 |
+| settlement | 费用结算单 |
+| loan | 借款单 |
 
 > 字段清单以 extract 返回的 FieldBrief 为准(后端可配置化,不同公司字段不同)。

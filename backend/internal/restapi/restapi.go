@@ -46,6 +46,7 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/store"
 	"github.com/yuanyuexiang/phoenix/internal/userauth"
+	"github.com/yuanyuexiang/phoenix/internal/workflowapi"
 )
 
 const maxFetchSize = 64 << 20 // file_url 下载上限 64MB
@@ -232,6 +233,7 @@ func (s *server) ask(w http.ResponseWriter, r *http.Request) {
 			DocumentID: h.DocumentID, Filename: h.Filename, DocType: h.DocType, Content: h.Content, Score: h.Score,
 		})
 	}
+	workflowapi.AttachChunkObjects(r, s.opts.DB, s.opts.OntReg, out.Chunks) // 命中片段附对象摘要
 	writeJSON(w, out)
 }
 
