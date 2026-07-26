@@ -1,7 +1,7 @@
 # 后端 REST API 接口文档（/pub/v1）
 
 > 给开发者/模型看：记录专家包调用的后端 `/pub/v1` 端点。**这是已实现的真实契约**
-> (后端 `backend/internal/restapi`),与老的 `/api/*`(X-Access-Key,前端/mcp 用)独立。
+> (后端 `backend/internal/restapi`),与管理面 `/api/*`(X-Access-Key,前端用)独立。
 
 ## 基础信息
 - 协议：标准 HTTP REST（JSON over HTTPS）

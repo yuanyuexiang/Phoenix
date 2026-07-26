@@ -1,8 +1,9 @@
 # Phoenix 文档助手（phoenix-doc-assistant）
 
-企业智能文档处理专家包。内置 Python 脚本直连后端 REST(`/pub/v1`),**每个操作追溯到具体员工**:
-每次请求携带员工本人经 Keycloak 登录得到的 token(OAuth 2.1 Device Flow,自动续期)。
-不走 MCP 连接器。与老专家 `phoenix-doc-expert`(MCP)可并存。
+企业智能文档处理专家包,平台唯一的 WorkBuddy 接入形态。内置 Python 脚本直连后端
+REST(`/pub/v1`),**每个操作追溯到具体员工**:每次请求携带员工本人经 Keycloak
+登录得到的 token(OAuth 2.1 Device Flow,自动续期)。
+(老专家 `phoenix-doc-expert` 与 MCP 连接器已于 V1.3 下线,历史方案见 `docs/archive/`。)
 
 ## 核心能力
 

@@ -9,7 +9,6 @@ import (
 )
 
 type Config struct {
-	HTTPAddr    string // MCP/HTTP 服务监听地址
 	DoctypesDir string // 单据类型 schema 目录
 
 	DatabaseDSN string
@@ -19,8 +18,6 @@ type Config struct {
 	MinioSecretKey string
 	MinioBucket    string
 	MinioUseSSL    bool
-
-	WorkflowBaseURL string // 工作流引擎地址(mcp/admin 使用)
 
 	MinConfidence float64 // 字段置信度低于该值转人工审核(仅当客户端回传了置信度)
 
@@ -33,21 +30,12 @@ type Config struct {
 	EmbedDim      int
 
 	// AdminPassword 是管理后台 / workflow API 的访问密钥(请求头 X-Access-Key)。
-	// 置空则关闭鉴权(仅建议本机联调);mcp 服务用同一配置调用 workflow。
+	// 置空则关闭鉴权(仅建议本机联调)。
 	AdminPassword string
 
-	// MCP 端点 OAuth 2.1 鉴权(mcp 服务专用,docs/MCP-OAuth鉴权方案.md)。
-	// Mode 为 off(默认)时完全不启用,以下其余项不生效。
-	OAuthMode         string // off | optional(有 token 记身份、无 token 放行,灰度用)| required
-	OAuthIssuer       string // 期望的 iss claim,如 https://kc.example.com/realms/phoenix
-	OAuthDiscoveryURL string // 实际拉取 OIDC discovery/JWKS 的地址;空 = Issuer(容器内网地址与 iss 不同时才需设置)
-	OAuthAudience     string // 期望的 aud claim(本资源在授权服务器侧的标识)
-	OAuthResource     string // RFC 9728 资源标识 = MCP 端点对外 URL
-	OAuthScopes       string // 空格分隔的必需 scope,空 = 不检查
-
-	// 员工级公网 REST 面(/pub/v1)的 OAuth 资源服务器(新 phoenix-doc-assistant 专家用,
-	// Keycloak Device Flow + 每员工身份)。与上面 MCP 的 OAuth 各自独立配置、互不影响;
-	// 与既有 X-Access-Key(前端/mcp 用)也互不干扰。Issuer 为空 → /pub/v1 不挂载(默认关闭)。
+	// 员工级公网 REST 面(/pub/v1)的 OAuth 资源服务器(phoenix-doc-assistant 专家用,
+	// Keycloak Device Flow + 每员工身份)。与既有 X-Access-Key(前端用)互不干扰。
+	// Issuer 为空 → /pub/v1 不挂载(默认关闭)。
 	APIOIDCIssuer       string // 期望的 iss claim(同一 Keycloak realm 即可,如 .../realms/phoenix)
 	APIOIDCDiscoveryURL string // 实际拉 discovery/JWKS 的地址;空 = Issuer(容器内网地址与 iss 不同时才设)
 	APIOIDCAudience     string // 期望的 aud claim(本 REST 面在授权服务器侧的标识,默认 phoenix-api)
@@ -55,7 +43,6 @@ type Config struct {
 
 func Load() Config {
 	return Config{
-		HTTPAddr:    env("PHX_HTTP_ADDR", ":8080"),
 		DoctypesDir: env("PHX_DOCTYPES_DIR", "configs/doctypes"),
 
 		// 默认值与 deploy/docker-compose.yml 暴露的宿主机端口一致(make infra-up 后 make run 即可用)。
@@ -67,8 +54,6 @@ func Load() Config {
 		MinioBucket:    env("PHX_MINIO_BUCKET", "documents"),
 		MinioUseSSL:    envBool("PHX_MINIO_USE_SSL", false),
 
-		WorkflowBaseURL: env("PHX_WORKFLOW_URL", "http://localhost:8081"),
-
 		MinConfidence: envFloat("PHX_MIN_CONFIDENCE", 0.8),
 
 		EmbedEndpoint: env("PHX_EMBED_ENDPOINT", ""),
@@ -77,13 +62,6 @@ func Load() Config {
 		EmbedDim:      envInt("PHX_EMBED_DIM", 1024),
 
 		AdminPassword: env("PHX_ADMIN_PASSWORD", "phoenix123"), // 默认密码,生产环境务必修改
-
-		OAuthMode:         env("PHX_OAUTH_MODE", "off"),
-		OAuthIssuer:       env("PHX_OAUTH_ISSUER", ""),
-		OAuthDiscoveryURL: env("PHX_OAUTH_DISCOVERY_URL", ""),
-		OAuthAudience:     env("PHX_OAUTH_AUDIENCE", "phoenix-mcp"),
-		OAuthResource:     env("PHX_OAUTH_RESOURCE", "http://localhost:8080/mcp"),
-		OAuthScopes:       env("PHX_OAUTH_SCOPES", ""),
 
 		APIOIDCIssuer:       env("PHX_API_OIDC_ISSUER", ""),
 		APIOIDCDiscoveryURL: env("PHX_API_OIDC_DISCOVERY_URL", ""),

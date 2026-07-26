@@ -2,68 +2,8 @@ package identity
 
 import (
 	"context"
-	"net/http"
 	"testing"
 )
-
-func TestHeadersRoundTrip(t *testing.T) {
-	cases := []struct {
-		name string
-		in   User
-		want User // 经头传输后期望解出的身份(Name 不上头,Username 承载展示名)
-		ok   bool
-	}{
-		{
-			name: "英文用户名",
-			in:   User{Sub: "sub-1", Username: "alice", Email: "alice@example.com"},
-			want: User{Sub: "sub-1", Username: "alice", Email: "alice@example.com"},
-			ok:   true,
-		},
-		{
-			name: "中文姓名(无 username 时降级为展示名)",
-			in:   User{Sub: "sub-2", Name: "张三", Email: "zhang@example.com"},
-			want: User{Sub: "sub-2", Username: "张三", Email: "zhang@example.com"},
-			ok:   true,
-		},
-		{
-			name: "仅 sub",
-			in:   User{Sub: "sub-3"},
-			want: User{Sub: "sub-3"},
-			ok:   true,
-		},
-		{
-			name: "空身份不写头",
-			in:   User{},
-			want: User{},
-			ok:   false,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			h := http.Header{}
-			SetHeaders(h, tc.in)
-			got, ok := FromHeaders(h)
-			if ok != tc.ok {
-				t.Fatalf("ok = %v, want %v", ok, tc.ok)
-			}
-			if got != tc.want {
-				t.Fatalf("got %+v, want %+v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestHeaderValuesAreASCII(t *testing.T) {
-	h := http.Header{}
-	SetHeaders(h, User{Sub: "s", Name: "李四"})
-	for _, key := range []string{HeaderSub, HeaderName, HeaderEmail} {
-		for _, c := range h.Get(key) {
-			if c > 127 {
-				t.Fatalf("%s 头包含非 ASCII 字符: %q", key, h.Get(key))
-			}
-		}
-	}
-}
 
 func TestDisplay(t *testing.T) {
 	cases := []struct {

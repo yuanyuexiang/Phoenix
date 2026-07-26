@@ -1,11 +1,11 @@
-// Package api 定义服务间 HTTP 契约的共享 DTO(Monorepo 内多服务共用)。
+// Package api 定义 REST 契约的共享 DTO(管理面 /api 与员工面 /pub/v1 共用)。
 //
 // 服务拓扑(说明书 §7 系统组成):内容识别/提取由 WorkBuddy(多模态大模型)完成,
 // 后端只负责归档、校验、存储与检索。
 //
-//	WorkBuddy ─MCP→ services/mcp ──REST→ services/workflow
-//	浏览器 ───→ services/admin ──────────┘   │     │
-//	                                    PostgreSQL  MinIO
+//	WorkBuddy 专家 ─REST(/pub/v1)→ cmd/workflow
+//	浏览器 ────────REST(/api)────────┘   │     │
+//	                               PostgreSQL  MinIO
 package api
 
 import "github.com/yuanyuexiang/phoenix/internal/model"
@@ -36,7 +36,7 @@ type ValidateRequest struct {
 	DocType string        `json:"doc_type,omitempty"`
 }
 
-// DocumentView 是对外(MCP/管理后台)统一的文档视图。
+// DocumentView 是对外(专家/管理后台)统一的文档视图。
 type DocumentView struct {
 	ID         string                  `json:"id"`
 	DocType    string                  `json:"doc_type"`

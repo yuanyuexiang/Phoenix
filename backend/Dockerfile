@@ -1,4 +1,4 @@
-# 全部 Go 服务共用,SERVICE 指定构建哪个(workflow/mcp):
+# Go 服务镜像,SERVICE 指定构建哪个入口(当前仅 workflow):
 #   docker build --build-arg SERVICE=workflow -t phoenix-workflow backend
 FROM golang:1.26 AS build
 ARG SERVICE

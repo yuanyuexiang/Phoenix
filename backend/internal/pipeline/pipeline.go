@@ -4,7 +4,7 @@
 //
 //	上传归档(MinIO) → [WorkBuddy 识别] → 回传字段+正文 → 规则校验 → 入库
 //
-// 每个阶段状态持久化在 documents.status,调用方(MCP/管理后台)可分步驱动。
+// 每个阶段状态持久化在 documents.status,调用方(专家 REST/管理后台)可分步驱动。
 package pipeline
 
 import (

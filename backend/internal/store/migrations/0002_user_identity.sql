@@ -1,4 +1,4 @@
--- 操作人身份(MCP OAuth 方案,docs/MCP-OAuth鉴权方案.md §4)。
+-- 操作人身份(OAuth 员工级身份;最初随 MCP OAuth 方案引入,现由 /pub/v1 使用,历史见 docs/archive/)。
 -- 注意:迁移在每次启动时全量重放(无版本表),所有语句必须幂等。
 
 -- uploaded_by / reviewed_by 存展示口径(username → email → sub,或后台的 'admin')。

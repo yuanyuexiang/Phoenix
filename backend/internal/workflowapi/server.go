@@ -122,22 +122,11 @@ func authMiddleware(password string, next http.Handler) http.Handler {
 
 /* ---------- 操作人与审计 ---------- */
 
-// operatorOf 解析当前请求的操作人。优先级:
-//  1. X-Phx-User-* 身份头(mcp 服务从 OAuth token 透传)→ actor 为身份展示口径,source=oauth;
-//  2. 无身份头但 X-Phx-Source=mcp(OAuth off/optional 且调用方未带 token)→ actor 空,source=anonymous;
-//  3. 其余(管理后台/脚本,共享密码无法区分到人)→ actor='admin',source=admin。
-//
-// 身份头只是传输载体:请求已过 authMiddleware(X-Access-Key)才会到这里,
-// 头的内容才可信。注意 PHX_ADMIN_PASSWORD 置空(鉴权关闭)时身份可被伪造,
-// 这与现状"关闭鉴权仅限本机联调"的约束一致。
+// operatorOf 解析当前请求的操作人。管理面走共享密码(X-Access-Key),
+// 无法区分到人,统一记 'admin';员工级身份走 /pub/v1(internal/restapi,
+// 从 Bearer token 取身份)。
 // TODO: 管理后台接入个人登录后,'admin' 应替换为真实用户。
-func operatorOf(r *http.Request) (actor, source string, u identity.User) {
-	if u, ok := identity.FromHeaders(r.Header); ok {
-		return u.Display(), "oauth", u
-	}
-	if r.Header.Get(identity.HeaderSource) == "mcp" {
-		return "", "anonymous", identity.User{}
-	}
+func operatorOf(_ *http.Request) (actor, source string, u identity.User) {
 	return "admin", "admin", identity.User{}
 }
 

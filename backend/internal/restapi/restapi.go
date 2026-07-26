@@ -5,8 +5,8 @@
 // (**不信任任何客户端请求头**),据此落 documents.uploaded_by/reviewed_by 与 audit_log
 // —— 因此每个操作都能追溯到具体员工。
 //
-// 与既有的 internal/workflowapi(X-Access-Key,前端/mcp 在用)完全独立、路由前缀不重叠;
-// 与 MCP 端点的 OAuth(internal/mcpauth)也各自配置、互不耦合。业务逻辑全部复用 pipeline,
+// 与既有的 internal/workflowapi(X-Access-Key,前端在用)完全独立、路由前缀不重叠。
+// 业务逻辑全部复用 pipeline,
 // 本包只加薄薄一层 HTTP 解析 + Bearer 鉴权 + 审计。装配见 cmd/workflow/main.go
 // (Issuer 未配置时本面不挂载,老部署行为完全不变)。
 //

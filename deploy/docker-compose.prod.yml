@@ -3,11 +3,10 @@
 # ===================================
 #
 # 拓扑(Traefik 已在服务器上运行,独占 80/443,回源网络 matrix-network):
-#   Traefik ──▶ admin(nginx :8084,SPA + /api 反代 workflow)   Host(${DIP_DOMAIN})
-#          ├──▶ mcp(:8080,WorkBuddy 连接器)                    Host(${DIP_DOMAIN}) && PathPrefix(/mcp)
-#          └──▶ keycloak(:8080,MCP OAuth 授权服务器)           Host(${DIP_DOMAIN}) && PathPrefix(/auth)
+#   Traefik ──▶ admin(nginx :8084,SPA + /api、/pub/v1 反代 workflow)  Host(${DIP_DOMAIN})
+#          └──▶ keycloak(:8080,员工级 REST OAuth 授权服务器)          Host(${DIP_DOMAIN}) && PathPrefix(/auth)
 #   其余服务(workflow/postgres/minio/redis)仅内部网络互通,不暴露。
-#   识别/字段提取已移至 WorkBuddy 客户端,后端不再有 parser/ai 服务。
+#   识别/字段提取已移至 WorkBuddy 客户端;MCP 连接器已下线(V1.3,历史方案见 docs/archive/)。
 #
 # 注意:
 #   - 项目名/容器名统一 phoenix 前缀。若服务器上仍有旧的同名 compose 项目(phoenix-backend 等),
@@ -82,13 +81,13 @@ services:
       PHX_EMBED_API_KEY: ${PHX_EMBED_API_KEY:-}
       PHX_EMBED_MODEL: ${PHX_EMBED_MODEL:-text-embedding-v3}
       # 员工级 REST 面 /pub/v1 的 OAuth 资源服务器(新 phoenix-doc-assistant 专家)。
-      # Issuer 空则 /pub/v1 不挂载(默认关闭);discovery 走容器内 keycloak 地址,与 MCP OAuth 一致。
+      # Issuer 空则 /pub/v1 不挂载(默认关闭);discovery 走容器内 keycloak 地址。
       PHX_API_OIDC_ISSUER: ${PHX_API_OIDC_ISSUER:-}
       PHX_API_OIDC_AUDIENCE: ${PHX_API_OIDC_AUDIENCE:-phoenix-api}
       PHX_API_OIDC_DISCOVERY_URL: ${PHX_API_OIDC_DISCOVERY_URL:-}
     networks: [internal]
 
-  keycloak: # 授权服务器(MCP OAuth;测试阶段部署,AS 选型拍板后可替换或做企业账号联邦)
+  keycloak: # 授权服务器(员工级 REST /pub/v1 OAuth;测试阶段部署,AS 选型拍板后可替换或做企业账号联邦)
     image: quay.io/keycloak/keycloak:26.5
     container_name: phoenix-keycloak
     restart: unless-stopped
@@ -129,50 +128,6 @@ services:
       - "traefik.http.services.phoenix-keycloak.loadbalancer.server.port=8080"
       - "traefik.http.routers.phoenix-keycloak.tls=true"
       - "traefik.http.routers.phoenix-keycloak.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
-
-  mcp: # WorkBuddy 连接器,经 Traefik 以 /mcp 路径对外
-    image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-mcp:${TAG:-latest}
-    container_name: phoenix-mcp
-    restart: unless-stopped
-    depends_on: [workflow]
-    environment:
-      TZ: Asia/Shanghai
-      PHX_WORKFLOW_URL: http://workflow:8081
-      PHX_ADMIN_PASSWORD: ${PHX_ADMIN_PASSWORD} # 内部调用 workflow 的凭证
-      # MCP 端点 OAuth 鉴权(docs/MCP-OAuth鉴权方案.md;AS 选型拍板后在 .env 配置,
-      # 先 optional 灰度观察再切 required)
-      PHX_OAUTH_MODE: ${PHX_OAUTH_MODE:-off}
-      PHX_OAUTH_ISSUER: ${PHX_OAUTH_ISSUER:-}
-      PHX_OAUTH_DISCOVERY_URL: ${PHX_OAUTH_DISCOVERY_URL:-} # 容器内取 JWKS 的内网地址(公网回环不可靠)
-      PHX_OAUTH_AUDIENCE: ${PHX_OAUTH_AUDIENCE:-phoenix-mcp}
-      PHX_OAUTH_RESOURCE: ${PHX_OAUTH_RESOURCE:-https://phoenix.matrix-net.tech/mcp}
-    networks: [internal, matrix-network]
-    labels:
-      - "traefik.enable=true"
-      # 同域名 /mcp 前缀路由到连接器;规则更长,优先级自然高于 admin 的 Host 规则
-      - "traefik.http.routers.phoenix-mcp.rule=Host(`phoenix.matrix-net.tech`) && PathPrefix(`/mcp`)"
-      - "traefik.http.routers.phoenix-mcp.entrypoints=websecure"
-      - "traefik.http.routers.phoenix-mcp.service=phoenix-mcp"
-      - "traefik.http.services.phoenix-mcp.loadbalancer.server.port=8080"
-      - "traefik.http.routers.phoenix-mcp.tls=true"
-      - "traefik.http.routers.phoenix-mcp.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
-      # RFC 9728 资源元数据路径不在 /mcp 前缀内,需单独路由到本服务
-      # (OAuth 客户端从 401 的 WWW-Authenticate 发现该端点)
-      - "traefik.http.routers.phoenix-mcp-oauth-meta.rule=Host(`phoenix.matrix-net.tech`) && PathPrefix(`/.well-known/oauth-protected-resource`)"
-      - "traefik.http.routers.phoenix-mcp-oauth-meta.entrypoints=websecure"
-      - "traefik.http.routers.phoenix-mcp-oauth-meta.service=phoenix-mcp"
-      - "traefik.http.routers.phoenix-mcp-oauth-meta.tls=true"
-      - "traefik.http.routers.phoenix-mcp-oauth-meta.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
-      # 旧版规范(2025-03-26)的客户端直接在 MCP 域名根部取 AS 元数据,
-      # 302 引导到 Keycloak 的 discovery(否则落到 admin SPA 返回 HTML,客户端解析报错)
-      - "traefik.http.routers.phoenix-mcp-oauth-as.rule=Host(`phoenix.matrix-net.tech`) && (PathPrefix(`/.well-known/oauth-authorization-server`) || PathPrefix(`/.well-known/openid-configuration`))"
-      - "traefik.http.routers.phoenix-mcp-oauth-as.entrypoints=websecure"
-      - "traefik.http.routers.phoenix-mcp-oauth-as.service=phoenix-mcp"
-      - "traefik.http.routers.phoenix-mcp-oauth-as.tls=true"
-      - "traefik.http.routers.phoenix-mcp-oauth-as.tls.certresolver=${TRAEFIK_CERTRESOLVER:-aliyunresolver}"
-      - "traefik.http.routers.phoenix-mcp-oauth-as.middlewares=phoenix-as-redirect"
-      - "traefik.http.middlewares.phoenix-as-redirect.redirectregex.regex=.*"
-      - "traefik.http.middlewares.phoenix-as-redirect.redirectregex.replacement=https://phoenix.matrix-net.tech/auth/realms/phoenix/.well-known/openid-configuration"
 
   admin: # 前端管理后台(nginx 托管 SPA 并反代 /api 到 workflow),域名主入口
     image: ${REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${REGISTRY_NAMESPACE:-yuanyuexiang}/phoenix-admin:${TAG:-latest}

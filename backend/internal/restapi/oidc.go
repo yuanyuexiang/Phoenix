@@ -11,14 +11,13 @@ import (
 )
 
 // Verifier 校验 /pub/v1 请求里的 Keycloak Bearer token(JWT):验签名 + iss + exp + aud,
-// 通过后把身份 claims 解成 identity.User。与 internal/mcpauth 各自独立(不引 MCP SDK),
-// 但底层同样走 go-oidc 的 OIDC discovery + JWKS,行为一致。
+// 通过后把身份 claims 解成 identity.User。底层走 go-oidc 的 OIDC discovery + JWKS。
 type Verifier struct {
 	inner *oidc.IDTokenVerifier
 }
 
 // NewVerifier 连接授权服务器(拉 OIDC discovery 与 JWKS)并返回 token 验证器。
-// 服务启动时调用一次;AS 未就绪时有限重试(对齐 mcpauth.NewVerifier 的 compose 启动约定)。
+// 服务启动时调用一次;AS 未就绪时有限重试(适配 compose 里 Keycloak 慢启动)。
 // discoveryURL 为空则用 issuer;两者不同(容器内网地址取元数据、token 的 iss 仍按 issuer 校验)
 // 时用 InsecureIssuerURLContext 放开 iss 与 discovery host 不一致的限制。
 func NewVerifier(ctx context.Context, issuer, discoveryURL, audience string) (*Verifier, error) {

@@ -66,7 +66,7 @@ func run() error {
 		MinConfidence: cfg.MinConfidence,
 	}
 
-	// 既有的内部 REST 面(X-Access-Key;前端 + mcp 在用),行为不变。
+	// 管理面 REST(X-Access-Key;前端在用),行为不变。
 	handler := workflowapi.NewHandler(workflowapi.Options{
 		Pipeline:      pipe,
 		Registry:      registry,

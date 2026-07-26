@@ -4,8 +4,8 @@
 > 目标:**每个操作都能追溯到具体员工**——每次请求携带员工本人经 Keycloak 登录得到的 token,
 > 后端校验后落 `documents.uploaded_by/reviewed_by` 与 `audit_log`。
 >
-> 与既有的 MCP 端点(`/mcp` + `internal/mcpauth`,老专家 phoenix-doc-expert 用)**完全独立、互不影响**;
-> 与管理后台的 `X-Access-Key`(`/api/*`)也各走各的。本方案只新增,不改动上述任何一条链路。
+> 与管理后台的 `X-Access-Key`(`/api/*`)各走各的,互不影响。
+> (撰写时与 MCP 端点并存;V1.3 起 MCP 已整体下线,本方案成为唯一对外接入面,历史方案见 docs/archive/。)
 
 ---
 
