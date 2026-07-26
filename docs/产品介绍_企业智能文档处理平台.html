@@ -538,6 +538,26 @@
   table.docs tr:hover td{ background:rgba(91,141,239,.04); }
 
   /* ============================================================
+     ONTOLOGY —— 本体层
+     ============================================================ */
+  .ont-grid{ display:grid; grid-template-columns:1fr 1.1fr; gap:32px; align-items:center; }
+  .ont-point{ padding:14px 0 14px 24px; border-top:1px solid var(--line-soft); position:relative; }
+  .ont-point:first-child{ border-top:0; }
+  .ont-point::before{
+    content:""; position:absolute; left:2px; top:22px; width:8px; height:8px;
+    border-radius:2px; background:linear-gradient(135deg,var(--acc-hi),var(--acc));
+  }
+  .ont-point b{ display:block; color:var(--ink-hi); font-size:15px; margin-bottom:4px; }
+  .ont-point p{ font-size:13.5px; color:var(--ink-lo); }
+  .ont-graph{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r-lg);
+    padding:18px 14px 12px;
+  }
+  .ont-graph svg{ display:block; width:100%; height:auto; }
+  .ont-cap{ margin-top:8px; font-size:12px; color:var(--ink-dim); text-align:center; }
+  @media (max-width: 960px){ .ont-grid{ grid-template-columns:1fr; } }
+
+  /* ============================================================
      SECURITY
      ============================================================ */
   .sec3{ display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
@@ -633,7 +653,7 @@
           把散落在邮件与文件夹里的非结构化文档,变成随取随用的企业数据资产。
         </p>
         <div class="stats">
-          <div class="stat"><b><em>7</em></b><span>个开放 API 能力</span></div>
+          <div class="stat"><b><em>10</em></b><span>个开放 API 能力</span></div>
           <div class="stat"><b><em>2</em></b><span>种使用入口</span></div>
           <div class="stat"><b>1 <em>YAML</em></b><span>新增一类单据</span></div>
           <div class="stat"><b><em>100</em>%</b><span>操作可追溯到人</span></div>
@@ -718,6 +738,7 @@
         <p>面向单据管理员与审核员的控制台,企业蓝设计语言,明暗双主题。</p>
         <ul>
           <li>文档 —— 全量单据的结构化查询与筛选</li>
+          <li>对象 —— 归一后的实体全景:属性、关系与证据单据</li>
           <li>审核 —— 校验未通过单据的人工修正与入库</li>
           <li>单据类型 —— 每类单据的字段与规则一目了然</li>
           <li>服务状态 —— 各组件健康度实时监控</li>
@@ -732,7 +753,7 @@
       <div class="tool rv" style="--d:.24s"><code>GET /documents</code><p>按类型、状态、上传人、字段值精确/比较条件结构化查询。</p></div>
       <div class="tool new rv" style="--d:.3s"><code>POST /ask</code><p>知识库语义问答:自然语言提问,返回原文片段与出处。</p></div>
     </div>
-    <p class="tools-note rv">以上端点统一挂在员工级开放 API <code>/pub/v1</code> 下(另有 <code>GET /me</code> 身份自省),
+    <p class="tools-note rv">以上端点统一挂在员工级开放 API <code>/pub/v1</code> 下(另有 <code>GET /me</code> 身份自省、<code>GET /objects</code> 实体图谱查询),
     员工级鉴权,构成对外稳定契约;新能力以新增端点方式扩展,已接入的专家无需改动。</p>
   </div>
 </section>
@@ -778,6 +799,68 @@
   </div>
 </section>
 
+<!-- ================= ONTOLOGY ================= -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow rv">Ontology · 本体层</div>
+    <h2 class="rv">不止归档文档,<br>更在构建组织的<span class="hl">数字孪生</span>。</h2>
+    <p class="lede rv">借鉴 Palantir Ontology 理念:单据入库后,其中的<strong>公司、员工、发票、合同</strong>
+    被自动归一为跨文档的业务实体并建立关系 —— 文档是证据,实体才是资产。
+    新增一类实体同样只需一份配置,不改代码。</p>
+    <div class="ont-grid">
+      <div class="rv">
+        <div class="ont-point"><b>实体归一</b><p>同一家公司在所有单据中解析为同一个对象;重复上传的两张发票,自动合并为一个实体、两份证据。</p></div>
+        <div class="ont-point"><b>关系图谱</b><p>员工—报销单—发票—公司连成链路,"这家供应商今年所有单据与总额"是一次确定性查询,不靠语义检索猜。</p></div>
+        <div class="ont-point"><b>重复报销检测</b><p>两张报销单引用同一张发票,入库瞬间自动告警——图上的一次计数,无需任何新算法。</p></div>
+        <div class="ont-point"><b>证据可溯源</b><p>每个实体都能回答"你来自哪些单据";修正或删除单据,实体层自动跟随,且永远可由文档全量重建。</p></div>
+      </div>
+      <div class="ont-graph rv" style="--d:.12s" aria-hidden="true">
+        <svg viewBox="0 0 640 300" role="img" aria-label="实体关系图示例">
+          <defs>
+            <marker id="oarr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6.5" markerHeight="6.5" orient="auto">
+              <path d="M0 0.6L7.4 4 0 7.4z" fill="#5B8DEF"/>
+            </marker>
+          </defs>
+          <!-- 员工 -->
+          <rect x="14" y="120" width="112" height="58" rx="9" fill="#1A2436" stroke="#34C08B" stroke-opacity=".55"/>
+          <text x="70" y="144" text-anchor="middle" fill="#6FDCB2" font-size="10" class="t-mono">员工</text>
+          <text x="70" y="163" text-anchor="middle" fill="#EFF3F9" font-size="13" font-weight="600">黄智超</text>
+          <!-- 报销单 ×2 -->
+          <rect x="200" y="30" width="150" height="58" rx="9" fill="#1A2436" stroke="#E8A33D" stroke-opacity=".5"/>
+          <text x="275" y="54" text-anchor="middle" fill="#F5C878" font-size="10" class="t-mono">报销单</text>
+          <text x="275" y="73" text-anchor="middle" fill="#EFF3F9" font-size="12" font-weight="600">BX-20260721-002</text>
+          <rect x="200" y="210" width="150" height="58" rx="9" fill="#1A2436" stroke="#E8A33D" stroke-opacity=".5"/>
+          <text x="275" y="234" text-anchor="middle" fill="#F5C878" font-size="10" class="t-mono">报销单</text>
+          <text x="275" y="253" text-anchor="middle" fill="#EFF3F9" font-size="12" font-weight="600">BX-20260721-003</text>
+          <!-- 发票 -->
+          <rect x="418" y="120" width="112" height="58" rx="9" fill="#1A2436" stroke="#5B8DEF" stroke-opacity=".7"/>
+          <text x="474" y="144" text-anchor="middle" fill="#86ADF5" font-size="10" class="t-mono">发票</text>
+          <text x="474" y="163" text-anchor="middle" fill="#EFF3F9" font-size="12.5" font-weight="600">02550485</text>
+          <!-- 重复告警 -->
+          <rect x="404" y="98" width="140" height="20" rx="10" fill="rgba(240,106,106,.12)" stroke="#F06A6A" stroke-opacity=".5"/>
+          <text x="474" y="112" text-anchor="middle" fill="#F79C9C" font-size="10.5">⚠ 被 2 份报销单引用</text>
+          <!-- 公司 -->
+          <rect x="560" y="120" width="68" height="58" rx="9" fill="#1A2436" stroke="#2C3850"/>
+          <text x="594" y="141" text-anchor="middle" fill="#8B99AF" font-size="10" class="t-mono">公司</text>
+          <text x="594" y="157" text-anchor="middle" fill="#EFF3F9" font-size="11" font-weight="600">中国石化</text>
+          <text x="594" y="170" text-anchor="middle" fill="#64738C" font-size="9">销售方</text>
+          <!-- 关系线 -->
+          <path class="arch-flow" d="M200 62 C 160 66, 140 110, 126 132" stroke="#5B8DEF" stroke-width="1.4" fill="none" marker-end="url(#oarr)"/>
+          <path class="arch-flow" d="M200 236 C 160 232, 140 188, 126 166" stroke="#5B8DEF" stroke-width="1.4" fill="none" marker-end="url(#oarr)"/>
+          <text x="152" y="98" text-anchor="middle" fill="#64738C" font-size="9.5">报销人</text>
+          <text x="152" y="208" text-anchor="middle" fill="#64738C" font-size="9.5">报销人</text>
+          <path class="arch-flow" d="M350 62 C 392 68, 404 108, 416 130" stroke="#5B8DEF" stroke-width="1.4" fill="none" marker-end="url(#oarr)"/>
+          <path class="arch-flow" d="M350 236 C 392 230, 404 190, 416 168" stroke="#5B8DEF" stroke-width="1.4" fill="none" marker-end="url(#oarr)"/>
+          <text x="392" y="88" text-anchor="middle" fill="#64738C" font-size="9.5">所附发票</text>
+          <text x="392" y="216" text-anchor="middle" fill="#64738C" font-size="9.5">所附发票</text>
+          <path class="arch-flow" d="M530 149h28" stroke="#5B8DEF" stroke-width="1.4" fill="none" marker-end="url(#oarr)"/>
+        </svg>
+        <p class="ont-cap">真实机制示例:两张报销单引用同一发票,入库时平台当场标记疑似重复</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ================= WORKFLOW ================= -->
 <section>
   <div class="wrap">
@@ -805,14 +888,14 @@
           <div class="dot"></div>
           <h4>入库分流</h4>
           <div class="forks">
-            <div class="fork ok"><b>saved</b> · 校验通过直接入库,正文写入知识库</div>
+            <div class="fork ok"><b>saved</b> · 校验通过入库,正文写知识库,实体自动物化归一</div>
             <div class="fork warn"><b>needs_review</b> · 未通过转人工审核台修正</div>
           </div>
         </div>
         <div class="fstep">
           <div class="dot"></div>
           <h4>查询与问答</h4>
-          <p>字段级结构化查询 + 知识库语义问答,数据随取随用。</p>
+          <p>字段级查询 + 实体图谱 + 语义问答,数据随取随用。</p>
         </div>
       </div>
     </div>
@@ -871,6 +954,19 @@
               <span class="who">员工 · ALICE</span>
               <div class="bubble">我们和凤凰软件那个采购项目,合作金额和签署日期是多少?</div>
             </div>
+            <div class="msg user" style="--i:5">
+              <span class="who">员工 · ALICE</span>
+              <div class="bubble">凤凰软件今年一共给我们开了几张发票?</div>
+            </div>
+            <div class="msg bot" style="--i:6">
+              <span class="who">文档处理专家</span>
+              <div class="bubble">
+                <div class="toolcalls"><span class="tc">GET /objects</span></div>
+                <p style="margin-top:8px">「凤凰软件服务有限公司」是已归一实体:今年共 <b style="color:var(--ink-hi)">3 张</b>发票,
+                价税合计 <b style="color:var(--ink-hi)">¥38,400.00</b>,另关联 1 份合同、2 份报销单。
+                这是基于<b style="color:var(--acc-hi)">实体图谱</b>的精确统计,不是语义检索的近似回答。</p>
+              </div>
+            </div>
             <div class="msg bot" style="--i:4">
               <span class="who">文档处理专家</span>
               <div class="bubble">
@@ -898,7 +994,7 @@
     <div class="demo-block">
       <div class="demo-head rv">
         <h3>② 校验拦下的问题,在审核台里修正</h3>
-        <p>审核员视角 · 队列 + 字段编辑 + 原文对照 三列式工作台</p>
+        <p>审核员视角 · 队列 + 字段编辑 + 原件对照 三列式工作台</p>
       </div>
       <div class="chrome rv">
         <div class="chrome-bar"><i></i><i></i><i></i><span class="chrome-title">Phoenix 管理后台</span><span class="chrome-url">phoenix-admin.example.com/review</span></div>
@@ -908,7 +1004,9 @@
               <span class="mark">凤</span>
               <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3.5h7L18.5 8v12.5h-11.5z" stroke-linejoin="round"/><path d="M14 3.5V8h4.5M9.5 12h5M9.5 15.5h5" stroke-linecap="round"/></svg><span>文档</span></span>
               <span class="ritem on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20M8 10.5l2 2 3-3.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>审核</span></span>
+              <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="2.6"/><circle cx="18" cy="7.5" r="2.6"/><circle cx="12" cy="17.5" r="2.6"/><path d="M8.4 6.6l7 .7M7 8.2l3.6 7M16.8 9.8l-3.4 5.6" stroke-linecap="round"/></svg><span>对象</span></span>
               <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><path d="M16.5 13.5v7M13 17h7" stroke-linecap="round"/></svg><span>单据类型</span></span>
+              <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9.5" cy="8.5" r="3.5"/><path d="M3.5 19.5c.7-3 3.1-4.8 6-4.8s5.3 1.8 6 4.8M15.5 5.4a3.5 3.5 0 010 6.2M17.5 14.9c1.6.6 2.7 1.9 3 4.6" stroke-linecap="round"/></svg><span>员工</span></span>
               <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 13h3.5l2-6 3.5 12 2.5-7 1.5 3H21" stroke-linecap="round" stroke-linejoin="round"/></svg><span>服务状态</span></span>
             </div>
             <div class="app-main">
@@ -973,7 +1071,9 @@
               <span class="mark">凤</span>
               <span class="ritem on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3.5h7L18.5 8v12.5h-11.5z" stroke-linejoin="round"/><path d="M14 3.5V8h4.5M9.5 12h5M9.5 15.5h5" stroke-linecap="round"/></svg><span>文档</span></span>
               <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20M8 10.5l2 2 3-3.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>审核</span></span>
+              <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="2.6"/><circle cx="18" cy="7.5" r="2.6"/><circle cx="12" cy="17.5" r="2.6"/><path d="M8.4 6.6l7 .7M7 8.2l3.6 7M16.8 9.8l-3.4 5.6" stroke-linecap="round"/></svg><span>对象</span></span>
               <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><path d="M16.5 13.5v7M13 17h7" stroke-linecap="round"/></svg><span>单据类型</span></span>
+              <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9.5" cy="8.5" r="3.5"/><path d="M3.5 19.5c.7-3 3.1-4.8 6-4.8s5.3 1.8 6 4.8M15.5 5.4a3.5 3.5 0 010 6.2M17.5 14.9c1.6.6 2.7 1.9 3 4.6" stroke-linecap="round"/></svg><span>员工</span></span>
               <span class="ritem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 13h3.5l2-6 3.5 12 2.5-7 1.5 3H21" stroke-linecap="round" stroke-linejoin="round"/></svg><span>服务状态</span></span>
             </div>
             <div class="app-main">
@@ -1073,13 +1173,13 @@
           <!-- 核心 -->
           <rect x="580" y="112" width="170" height="104" rx="10" fill="url(#boxg)" stroke="#5B8DEF" stroke-opacity=".85" stroke-width="1.4"/>
           <text x="665" y="148" text-anchor="middle" fill="#EFF3F9" font-size="15" font-weight="600">工作流引擎</text>
-          <text x="665" y="170" text-anchor="middle" fill="#8B99AF" font-size="11.5">归档 · 校验 · 存储 · 检索</text>
+          <text x="665" y="170" text-anchor="middle" fill="#8B99AF" font-size="11.5">归档 · 校验 · 实体物化 · 检索</text>
           <text x="665" y="190" text-anchor="middle" fill="#64738C" font-size="10.5">状态机 + 审计</text>
 
           <!-- 存储 -->
           <rect x="600" y="262" width="240" height="56" rx="10" fill="#0E1522" stroke="#2C3850"/>
           <text x="660" y="285" text-anchor="middle" fill="#CBD6E5" font-size="11.5" font-weight="600">PostgreSQL</text>
-          <text x="660" y="303" text-anchor="middle" fill="#64738C" font-size="10">JSONB + pgvector</text>
+          <text x="660" y="303" text-anchor="middle" fill="#64738C" font-size="10">JSONB · 实体图谱 · pgvector</text>
           <line x1="720" y1="270" x2="720" y2="310" stroke="#2C3850"/>
           <text x="780" y="285" text-anchor="middle" fill="#CBD6E5" font-size="11.5" font-weight="600">MinIO</text>
           <text x="780" y="303" text-anchor="middle" fill="#64738C" font-size="10">原始文件归档</text>
@@ -1118,7 +1218,7 @@
       <span class="brand-name">Phoenix<small>企业智能文档处理平台</small></span>
     </div>
     <p class="foot-note">
-      本页依据<b>《产品说明书 · 企业智能文档处理平台》V1.3</b> 编写;
+      本页依据<b>《产品说明书 · 企业智能文档处理平台》V1.3</b> 及 V1.4 本体层设计编写;
       界面为产品能力演示,数据均为虚构样例。部分【待确认】事项以说明书最新版本为准。
     </p>
   </div>
