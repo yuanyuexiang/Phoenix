@@ -1,28 +1,40 @@
 #!/usr/bin/env python3
 """员工登录与 token 管理 —— 每员工身份的核心(V1.3 自研账号体系,取代 Keycloak)。
 
-登录:员工输入本人账号口令 → POST /pub/v1/auth/login → 平台签发
-access_token(短期)+ refresh_token(长期),存本地 .config.json(0600,仅本人可读)。
-之后每次调用自动用 refresh_token 续期,通常很久才需再登。账号由管理员在
-Phoenix 管理后台「员工」页创建;改密/禁用后旧 token 立即失效。
+默认登录方式是**弹浏览器**(复刻 OAuth 授权码 + PKCE 的体验,但登录页由 Phoenix
+平台自己出,无第三方身份组件):脚本起本机回调服务 → 打开平台登录页 → 员工在
+页面输入账号口令 → 平台签发一次性授权码回调本机 → 换 access/refresh token。
+登录成功页会提示"正在返回 WorkBuddy"并自动关闭。
 
-命令(供 Agent MD 调用):
-  --check              打印 NOT_CONFIGURED | NEEDS_LOGIN | CONFIGURED user=xxx
-  --login [--user X]   交互式登录:提示输用户名与口令(getpass 不回显、不进 shell 历史)
-  --whoami             打印当前登录员工身份(调用 /pub/v1/me 实测 token 有效性)
-  --logout             清除本地 token(切换账号用)
+token 存本地 .config.json(0600,仅本人可读);之后每次调用自动续期,
+通常很久才需再登。账号由管理员在 Phoenix 管理后台「员工」页创建;
+改密/禁用后旧 token 立即失效。
 
-非交互场景可用环境变量 PHX_USERNAME / PHX_PASSWORD(仅限受控环境)。
+命令行:
+  auth.py --check                 NOT_CONFIGURED / NEEDS_LOGIN / CONFIGURED user=xxx
+  auth.py --login [--wait N]      弹浏览器登录(默认;等待回调最长 N 秒,默认 180)
+  auth.py --login --password      终端交互输入账号口令(无浏览器环境的后备,getpass 不回显)
+  auth.py --whoami                当前登录员工(调 /pub/v1/me 实测 token)
+  auth.py --logout                清除本地 token(切换账号用)
+
+非交互场景可用环境变量 PHX_USERNAME / PHX_PASSWORD 配合 --password(仅限受控环境)。
 
 对外(被 api_client import):valid_access_token() / NeedsLogin / AuthError
 """
+import base64
 import getpass
+import hashlib
+import http.server
 import json
 import os
+import secrets
 import sys
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg_mod
@@ -36,7 +48,9 @@ class AuthError(Exception):
     """网络/服务器错误(非凭证问题)。"""
 
 
-_EXPIRY_SKEW = 60  # access token 提前 60s 视为过期,预留续期余量
+_EXPIRY_SKEW = 60          # access token 提前 60s 视为过期,预留续期余量
+_PREFERRED_PORT = 47100    # 回调端口:先试固定值,被占用则退到随机端口
+_DEFAULT_WAIT = 180        # 等待浏览器回调的默认秒数
 
 
 def _post_json(cfg, path, payload, bearer=None):
@@ -72,18 +86,105 @@ def _store_tokens(resp):
     })
 
 
-def login(username, password):
-    """账号口令登录,成功后 token 落盘,返回用户名。"""
+def _require_endpoint():
     cfg = cfg_mod.load_config()
     if not cfg or not cfg_mod.is_endpoint_configured():
         raise AuthError("端点未配置(api_base_url),请先运行 setup.py")
+    return cfg
+
+
+"""---------------- 浏览器登录(授权码 + PKCE,登录页由平台自己出) ----------------"""
+
+_SUCCESS_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>登录成功</title><style>
+body{min-height:96vh;display:grid;place-items:center;font-family:-apple-system,"PingFang SC",sans-serif;background:#F6F8FB;color:#2B3A52}
+@media (prefers-color-scheme:dark){body{background:#0E141F;color:#CBD6E5}}
+.box{text-align:center}.ok{font-size:44px;color:#059669}p{margin-top:10px;font-size:14px}small{color:#8B98AC}
+</style></head><body><div class="box"><div class="ok">✓</div>
+<p>登录成功,正在返回 WorkBuddy…</p><small>本页将自动关闭;若未关闭可手动关闭</small></div>
+<script>setTimeout(function(){window.close()},1200)</script></body></html>"""
+
+
+class _CallbackHandler(http.server.BaseHTTPRequestHandler):
+    result = {}
+    done = threading.Event()
+
+    def do_GET(self):
+        u = urllib.parse.urlparse(self.path)
+        if u.path != '/callback':
+            self.send_response(404)
+            self.end_headers()
+            return
+        q = urllib.parse.parse_qs(u.query)
+        _CallbackHandler.result = {'code': (q.get('code') or [''])[0], 'state': (q.get('state') or [''])[0]}
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(_SUCCESS_HTML.encode('utf-8'))
+        _CallbackHandler.done.set()
+
+    def log_message(self, *args):  # 静默访问日志
+        pass
+
+
+def browser_login(wait_seconds=_DEFAULT_WAIT):
+    """弹浏览器登录:本机回调 → 授权码 + PKCE 换 token。返回用户名。"""
+    cfg = _require_endpoint()
+
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b'=').decode()
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+    state = secrets.token_urlsafe(16)
+
+    _CallbackHandler.result = {}
+    _CallbackHandler.done.clear()
+    try:
+        srv = http.server.HTTPServer(('127.0.0.1', _PREFERRED_PORT), _CallbackHandler)
+    except OSError:
+        srv = http.server.HTTPServer(('127.0.0.1', 0), _CallbackHandler)
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+    params = urllib.parse.urlencode({
+        'redirect_uri': f'http://127.0.0.1:{port}/callback',
+        'state': state,
+        'code_challenge': challenge,
+        'code_challenge_method': 'S256',
+    })
+    login_url = cfg['api_base_url'].rstrip('/') + '/pub/v1/auth/authorize?' + params
+    print(f"[auth] 已打开浏览器;若未弹出,请手动访问登录: {login_url}", file=sys.stderr)
+    webbrowser.open(login_url)
+
+    try:
+        if not _CallbackHandler.done.wait(timeout=wait_seconds):
+            raise AuthError(f"等待浏览器登录超时({wait_seconds}s),请重试 --login")
+        res = _CallbackHandler.result
+    finally:
+        srv.shutdown()
+
+    if res.get('state') != state:
+        raise AuthError("state 不匹配,已丢弃本次回调(可能被篡改),请重试 --login")
+    if not res.get('code'):
+        raise AuthError("回调缺少授权码,请重试 --login")
+
+    resp = _post_json(cfg, '/pub/v1/auth/token', {
+        'grant_type': 'authorization_code', 'code': res['code'], 'code_verifier': verifier,
+    })
+    _store_tokens(resp)
+    return (resp.get('user') or {}).get('username', '')
+
+
+"""---------------- 口令登录(终端后备)与 token 维护 ----------------"""
+
+def password_login(username, password):
+    """账号口令直连登录(终端后备/冒烟用),成功后 token 落盘,返回用户名。"""
+    cfg = _require_endpoint()
     resp = _post_json(cfg, '/pub/v1/auth/login', {'username': username, 'password': password})
     _store_tokens(resp)
     return (resp.get('user') or {}).get('username', username)
 
 
 def valid_access_token():
-    """返回一个有效的 access_token:未过期直接用;过期用 refresh_token 续期;
+    """返回一个有效的 access_token:未过期直接用;过期用 refresh_token 换新;
     都不行则抛 NeedsLogin,由上层引导登录。"""
     cfg = cfg_mod.load_config()
     if not cfg or not cfg_mod.is_endpoint_configured():
@@ -104,6 +205,8 @@ def valid_access_token():
     return resp['access_token']
 
 
+"""---------------- CLI ----------------"""
+
 def _cli_check():
     if not cfg_mod.is_endpoint_configured():
         print("NOT_CONFIGURED")
@@ -118,16 +221,22 @@ def _cli_check():
 
 
 def _cli_login(argv):
-    username = os.environ.get('PHX_USERNAME', '')
-    password = os.environ.get('PHX_PASSWORD', '')
-    if '--user' in argv and argv.index('--user') + 1 < len(argv):
-        username = argv[argv.index('--user') + 1]
-    if not username:
-        username = input("用户名: ").strip()
-    if not password:
-        password = getpass.getpass("口令(输入不回显): ")
     try:
-        who = login(username, password)
+        if '--password' in argv:
+            username = os.environ.get('PHX_USERNAME', '')
+            password = os.environ.get('PHX_PASSWORD', '')
+            if '--user' in argv and argv.index('--user') + 1 < len(argv):
+                username = argv[argv.index('--user') + 1]
+            if not username:
+                username = input("用户名: ").strip()
+            if not password:
+                password = getpass.getpass("口令(输入不回显): ")
+            who = password_login(username, password)
+        else:
+            wait = _DEFAULT_WAIT
+            if '--wait' in argv and argv.index('--wait') + 1 < len(argv):
+                wait = int(argv[argv.index('--wait') + 1])
+            who = browser_login(wait)
         print(f"AUTHORIZED user={who}")
     except (NeedsLogin, AuthError) as e:
         print(f"LOGIN_FAILED {e}")
@@ -159,4 +268,4 @@ if __name__ == '__main__':
         cfg_mod.clear_tokens()
         print("LOGGED_OUT")
     else:
-        print("用法: auth.py [--check | --login [--user 用户名] | --whoami | --logout]")
+        print("用法: auth.py [--check | --login [--wait N] [--password [--user 用户名]] | --whoami | --logout]")

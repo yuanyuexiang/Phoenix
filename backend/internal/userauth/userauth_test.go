@@ -60,6 +60,22 @@ func TestJWTIssueVerify(t *testing.T) {
 	}
 }
 
+func TestIssueCode(t *testing.T) {
+	s := New([]byte("k"))
+	code := s.IssueCode("alice", 2, "challenge-abc")
+	c, err := s.Verify(code, TypCode)
+	if err != nil {
+		t.Fatalf("code 校验失败: %v", err)
+	}
+	if c.Sub != "alice" || c.Ver != 2 || c.Cch != "challenge-abc" {
+		t.Fatalf("code claims 不符: %+v", c)
+	}
+	// 授权码不能当 access token 用
+	if _, err := s.Verify(code, TypAccess); err == nil {
+		t.Fatal("code 不应通过 access 类型校验")
+	}
+}
+
 func TestJWTExpiry(t *testing.T) {
 	s := New([]byte("k"))
 	s.now = func() time.Time { return time.Unix(1000, 0) }

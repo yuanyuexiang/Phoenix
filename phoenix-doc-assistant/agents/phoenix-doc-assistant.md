@@ -43,16 +43,18 @@ python3 skills/phoenix-api/scripts/auth.py --check
 
 ## 员工登录
 
-当 `auth.py --check` 返回 `NEEDS_LOGIN` 时,一步登录(交互式命令,会在终端提示输入):
+当 `auth.py --check` 返回 `NEEDS_LOGIN` 时,一步登录:
 ```bash
 python3 skills/phoenix-api/scripts/auth.py --login
 ```
-- 告诉用户:"请在终端输入你的员工用户名和口令(口令不回显)"。已知用户名可用 `--login --user <用户名>` 只提示口令。
+它会**自动弹出本机浏览器**到 Phoenix 平台登录页,员工在页面输入账号口令,成功后浏览器显示"正在返回 WorkBuddy"并自动关闭,脚本拿到 token。
+- 告诉用户:"已打开浏览器,请用你的员工账号登录"。
+- 若浏览器没弹出:命令的 stderr 会打印一行 `[auth] ... 请手动访问登录: <URL>`,把这个链接发给用户手动打开。
 - 输出 `AUTHORIZED user=xxx` → 告知"已登录为 xxx",继续业务。
-- 输出 `LOGIN_FAILED ...` → 口令错误或账号被禁用,请用户确认;账号由管理员在 Phoenix 管理后台「员工」页创建/重置。
-- **绝不代替用户在命令行参数里传口令**(会进 shell 历史);口令只经 getpass 输入。
+- 输出 `LOGIN_FAILED 等待浏览器登录超时` → 让用户尽快在浏览器完成登录后**再次执行 `--login`**;Bash 超时短可 `--login --wait 60`。
+- 无浏览器环境(如 SSH 终端)的后备:`--login --password` 在终端交互输入(getpass 不回显)。**绝不代替用户在命令行参数里传口令**。
 
-> 登录一次后 token 自动续期,通常很久才需再登。切换账号:`auth.py --logout` 后重登。
+> 员工在**平台登录页**输口令,不经过对话与终端;登录一次后 token 自动续期,通常很久才需再登。切换账号:`auth.py --logout` 后重登。账号由管理员在 Phoenix 管理后台「员工」页创建/重置。
 
 ## 端点配置（仅当返回 NOT_CONFIGURED,通常 IT 已预置)
 
@@ -206,7 +208,7 @@ python3 skills/phoenix-api/scripts/commands/ask.py --question '{问题}' --doc-t
 ## 错误处理
 
 读取脚本 stdout 的 JSON,按 error 字段处理:
-- `NEEDS_LOGIN`：未登录或登录已失效 → 走「员工登录」流程(--login-start / --login-poll)
+- `NEEDS_LOGIN`：未登录或登录已失效 → 走「员工登录」流程(auth.py --login)
 - `NOT_CONFIGURED`：端点未配置 → 走「端点配置」流程
 - `NETWORK_ERROR`：后端/授权服务器不可达 → 提示确认地址正确且服务已启动
 - `AUTH_FAILED`：token 被后端拒绝 → 引导重新登录

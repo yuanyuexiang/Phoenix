@@ -89,9 +89,11 @@ func pbkdf2SHA256(password, salt []byte, iters, keyLen int) []byte {
 const (
 	TypAccess  = "access"
 	TypRefresh = "refresh"
+	TypCode    = "code" // 浏览器登录流的一次性授权码(PKCE 绑定,见 restapi authorize/token)
 
 	DefaultAccessTTL  = time.Hour
 	DefaultRefreshTTL = 30 * 24 * time.Hour
+	CodeTTL           = 2 * time.Minute
 )
 
 // Claims 是本平台签发 token 的载荷。
@@ -99,8 +101,9 @@ type Claims struct {
 	Sub   string `json:"sub"` // username
 	Name  string `json:"name,omitempty"`
 	Email string `json:"email,omitempty"`
-	Typ   string `json:"typ"` // access | refresh
-	Ver   int    `json:"ver"` // users.token_version,改密/禁用后旧 token 失效
+	Typ   string `json:"typ"`           // access | refresh | code
+	Ver   int    `json:"ver"`           // users.token_version,改密/禁用后旧 token 失效
+	Cch   string `json:"cch,omitempty"` // code 专用:PKCE code_challenge(S256)
 	Iat   int64  `json:"iat"`
 	Exp   int64  `json:"exp"`
 }
@@ -131,6 +134,16 @@ func (s *Service) Issue(username, name, email string, tokenVersion int) (access,
 	r.Exp = now.Add(s.RefreshTTL).Unix()
 
 	return s.sign(a), s.sign(r), int(s.AccessTTL.Seconds())
+}
+
+// IssueCode 为浏览器登录流签发一次性授权码:短时效,绑定 PKCE code_challenge,
+// 兑换 token 时校验 S256(code_verifier) == Cch(见 restapi 的 /auth/token)。
+func (s *Service) IssueCode(username string, tokenVersion int, codeChallenge string) string {
+	now := s.now()
+	return s.sign(Claims{
+		Sub: username, Typ: TypCode, Ver: tokenVersion, Cch: codeChallenge,
+		Iat: now.Unix(), Exp: now.Add(CodeTTL).Unix(),
+	})
 }
 
 // Verify 校验签名与有效期,并要求 typ 匹配(access token 不能当 refresh 用,反之亦然)。

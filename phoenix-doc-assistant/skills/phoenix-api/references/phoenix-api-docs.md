@@ -24,6 +24,23 @@ HTTP 非 2xx,body 为 `{"error":"CODE","message":"..."}`:
 
 ## 接口列表
 
+### A1. GET/POST /pub/v1/auth/authorize（浏览器登录页,无需 token）
+GET 参数:`redirect_uri`(仅限本机回环)、`state`、`code_challenge`(+`code_challenge_method=S256`)。
+返回平台登录页;员工提交账号口令后 302 到 `{redirect_uri}?code=...&state=...`。
+由 `auth.py --login` 弹浏览器使用。
+
+### A2. POST /pub/v1/auth/token（授权码换 token,无需 token）
+请求:`{"grant_type":"authorization_code","code","code_verifier"}`。
+响应:`{"access_token","refresh_token","token_type":"Bearer","expires_in",
+"user":{"username","name","email"}}`。code 2 分钟有效、一次性、PKCE 绑定。
+
+### A3. POST /pub/v1/auth/login（口令直连登录,无需 token;终端后备/冒烟用）
+请求:`{"username","password"}` → 响应同 A2。失败统一 401 AUTH_FAILED(不区分账号不存在/口令错)。
+
+### A4. POST /pub/v1/auth/refresh（续期,无需 token）
+请求:`{"refresh_token"}` → 响应同 login(新的一对 token,轮换)。
+改密/禁用后 refresh 也会 401,此时需重新登录。由 `auth.py` 自动调用。
+
 ### 0. GET /pub/v1/me（当前员工身份）
 响应:`{"sub","username","email","name","display"}`
 

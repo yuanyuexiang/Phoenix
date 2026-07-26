@@ -15,8 +15,11 @@ token 并自动续期(V1.3 起为自研账号体系,不再依赖 Keycloak)。
 
 ## 鉴权:每员工身份(自研账号 + JWT)
 
-- **账号登录**:`auth.py --login` → 终端提示输入员工用户名与口令(getpass 不回显)→
-  平台签发 access_token(短期)+ refresh_token(长期),存本地 `.config.json`(0600)。
+- **弹浏览器登录**:`auth.py --login` → 弹出 Phoenix 平台登录页(授权码 + PKCE,
+  登录页由平台自己出,无第三方身份组件)→ 员工在页面输入账号口令 → 成功页自动关闭
+  返回 WorkBuddy,脚本经本机回调拿到 access_token(短期)+ refresh_token(长期),
+  存本地 `.config.json`(0600)。
+- 无浏览器环境的后备:`auth.py --login --password` 终端交互输入(getpass 不回显)。
 - 之后 refresh_token 自动续期;`auth.py --logout` 切换账号。
 - 员工账号由管理员在 Phoenix 管理后台「员工」页创建/重置口令/禁用;
   改密或禁用后旧 token 立即失效。
@@ -38,7 +41,7 @@ phoenix-doc-assistant/
 │   ├── SKILL.md
 │   ├── scripts/
 │   │   ├── config.py                    # 配置文件读写/脱敏
-│   │   ├── auth.py                      # 账号登录 + token 自动续期
+│   │   ├── auth.py                      # 弹浏览器登录(授权码+PKCE) + token 自动续期
 │   │   ├── api_client.py                # REST 客户端(自动带 Bearer)
 │   │   ├── setup.py                     # 端点配置向导(手动终端用)
 │   │   └── commands/                    # upload/extract_fields/validate/save/query/ask
@@ -61,7 +64,7 @@ phoenix-doc-assistant/
 `templates/config.template.json`(员工只需登录,不填任何密钥)。
 
 ### 3. 首次使用
-和专家对话,它会自动 `auth.py --check`;未登录则引导输入账号口令登录。之后即可:
+和专家对话,它会自动 `auth.py --check`;未登录则弹浏览器引导登录(成功后自动返回)。之后即可:
 - "帮我上传归档这份报销单" + 附上图片
 - "查一下金额超过1万的报销单"
 - "那份合同里违约金怎么约定的？"
@@ -71,7 +74,7 @@ phoenix-doc-assistant/
 ```bash
 cd skills/phoenix-api/scripts
 python3 auth.py --check              # NOT_CONFIGURED / NEEDS_LOGIN / CONFIGURED user=xxx
-python3 auth.py --login              # 账号口令登录(交互式)
+python3 auth.py --login              # 弹浏览器登录(--password 为终端后备)
 python3 auth.py --whoami             # 当前登录员工
 python3 config.py --show             # 查看配置(token 脱敏)
 python3 commands/upload.py --content-text "测试内容" --doc-type generic

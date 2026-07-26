@@ -22,7 +22,7 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 | 脚本 | 作用 | 对应端点 |
 |------|------|---------|
 | `scripts/config.py` | 配置文件读写 / 脱敏展示（`--show`/`--endpoint-check`/`--logout`） | - |
-| `scripts/auth.py` | **登录与 token**（`--check` / `--login`(账号口令登录) / `--whoami` / `--logout`） | POST /pub/v1/auth/login、/auth/refresh |
+| `scripts/auth.py` | **登录与 token**（`--check` / `--login`(弹浏览器;`--password` 终端后备) / `--whoami` / `--logout`） | /pub/v1/auth/authorize、/auth/token、/auth/login、/auth/refresh |
 | `scripts/api_client.py` | REST HTTP 客户端封装（各命令 import,自动带 Bearer） | - |
 | `scripts/setup.py` | 端点配置向导（手动终端用） | - |
 | `scripts/commands/upload.py` | 上传文档归档 | POST /pub/v1/documents |
@@ -50,8 +50,10 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 
 ## 鉴权方式
 
-- 登录:`auth.py --login` 交互式输入员工账号与口令(getpass 不回显、不进 shell 历史),
-  换取平台签发的 access_token(短期)+ refresh_token(长期)。
+- 登录:**弹浏览器登录**(默认)——`auth.py --login` 打开平台自己的登录页
+  (`GET /pub/v1/auth/authorize`,授权码 + PKCE),员工在页面输入账号口令,
+  成功页自动关闭返回 WorkBuddy;口令不经过终端与对话。
+  无浏览器环境的后备:`--login --password` 终端交互输入(getpass 不回显)。
 - 请求:`api_client.py` 每次自动取一个有效 access_token(过期用 refresh_token 续期),带
   `Authorization: Bearer <token>`。未登录 → 输出 `{"error":"NEEDS_LOGIN"}`。
 - 管理员改密/禁用账号后旧 token 立即失效,客户端会提示重新登录。

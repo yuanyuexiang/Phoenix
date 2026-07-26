@@ -12,7 +12,10 @@
 //
 // 路由一览:
 //
-//	POST   /pub/v1/auth/login               账号口令 → access + refresh token(开放)
+//	GET    /pub/v1/auth/authorize           浏览器登录页(开放;弹浏览器流,见 authorize.go)
+//	POST   /pub/v1/auth/authorize           登录表单提交 → 授权码回调到本机(开放)
+//	POST   /pub/v1/auth/token               授权码 + PKCE verifier → token(开放)
+//	POST   /pub/v1/auth/login               账号口令 → access + refresh token(开放;终端/冒烟用)
 //	POST   /pub/v1/auth/refresh             refresh token 续期(开放)
 //	GET    /pub/v1/me                       当前 token 对应的员工身份(客户端确认登录用)
 //	POST   /pub/v1/documents                上传归档(content_text/base64/file_url 三选一)
@@ -34,6 +37,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
@@ -56,7 +60,7 @@ type Options struct {
 // 注意本面不暴露删除等破坏性操作(删除/覆盖引导管理后台人工),
 // 员工侧只做登录/上传/识别/校验/入库/查询/问答。
 func NewHandler(opts Options) http.Handler {
-	s := &server{opts: opts}
+	s := &server{opts: opts, usedCodes: map[string]int64{}}
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /pub/v1/me", s.me)
@@ -68,6 +72,9 @@ func NewHandler(opts Options) http.Handler {
 	protected.HandleFunc("POST /pub/v1/ask", s.ask)
 
 	root := http.NewServeMux()
+	root.HandleFunc("GET /pub/v1/auth/authorize", s.authorizePage)
+	root.HandleFunc("POST /pub/v1/auth/authorize", s.authorizeSubmit)
+	root.HandleFunc("POST /pub/v1/auth/token", s.token)
 	root.HandleFunc("POST /pub/v1/auth/login", s.login)
 	root.HandleFunc("POST /pub/v1/auth/refresh", s.refresh)
 	root.Handle("/pub/v1/", s.authMiddleware(protected))
@@ -76,6 +83,9 @@ func NewHandler(opts Options) http.Handler {
 
 type server struct {
 	opts Options
+
+	codeMu    sync.Mutex       // 保护 usedCodes
+	usedCodes map[string]int64 // 已兑换的授权码 → 过期时间(一次性使用)
 }
 
 /* ---------- 审计 ---------- */
