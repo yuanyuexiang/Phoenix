@@ -23,6 +23,48 @@ export interface Doc {
   uploaded_by?: string;
   reviewed_by?: string;
   created_at?: string;
+  ontology?: OntologySummary; // save 响应附带的本体物化摘要
+}
+
+/* ---------- 本体层(对象/关系,configs/ontology) ---------- */
+
+export interface OntologyType {
+  name: string;
+  title: string;
+}
+
+export interface OntObject {
+  id: string;
+  object_type: string;
+  display_name: string;
+  properties: Record<string, unknown>;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OntLink {
+  link_type: string;
+  from_id: string;
+  from_type: string;
+  from_display: string;
+  to_id: string;
+  to_type: string;
+  to_display: string;
+  document_id: string;
+}
+
+export interface ObjectDetail {
+  object: OntObject;
+  type_title: string;
+  links_out: OntLink[];
+  links_in: OntLink[];
+  documents: Doc[];
+}
+
+export interface OntologySummary {
+  objects?: { type: string; title: string; id: string; display: string; is_new: boolean }[];
+  warnings?: string[];
 }
 
 export interface FieldRule {

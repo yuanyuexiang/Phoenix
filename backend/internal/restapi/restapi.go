@@ -42,6 +42,7 @@ import (
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/identity"
+	"github.com/yuanyuexiang/phoenix/internal/ontology"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/store"
 	"github.com/yuanyuexiang/phoenix/internal/userauth"
@@ -54,6 +55,7 @@ type Options struct {
 	Pipeline *pipeline.Pipeline
 	DB       *store.DB
 	Auth     *userauth.Service
+	OntReg   *ontology.Registry // 可为 nil(本体层未启用)
 }
 
 // NewHandler 组装 /pub/v1 路由:auth/* 开放,其余套 Bearer 鉴权中间件。
@@ -70,6 +72,9 @@ func NewHandler(opts Options) http.Handler {
 	protected.HandleFunc("POST /pub/v1/documents/{id}/save", s.save)
 	protected.HandleFunc("GET /pub/v1/documents", s.query)
 	protected.HandleFunc("POST /pub/v1/ask", s.ask)
+	protected.HandleFunc("GET /pub/v1/objects", s.objectsList)
+	protected.HandleFunc("GET /pub/v1/objects/{id}", s.objectGet)
+	protected.HandleFunc("GET /pub/v1/documents/{id}/objects", s.documentObjects)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /pub/v1/auth/authorize", s.authorizePage)
@@ -170,13 +175,15 @@ func (s *server) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, _ := identity.FromContext(r.Context())
-	doc, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.ContentText, req.DocType, req.Force, u.Display())
+	doc, ontSum, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.ContentText, req.DocType, req.Force, u.Display())
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "UNPROCESSABLE", err.Error())
 		return
 	}
 	s.audit(r, "save", doc.ID, map[string]any{"force": req.Force, "has_content": req.ContentText != ""})
-	writeJSON(w, api.ToView(doc))
+	view := api.ToView(doc)
+	view.Ontology = ontSum
+	writeJSON(w, view)
 }
 
 func (s *server) query(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,25 @@
+# 发票对象 —— 由发票单据物化;也会被报销单的"所附发票号"以最小属性(发票号)提前创建,
+# 待真实发票入库后按同一归一键合并补全。
+name: invoice
+title: 发票
+display_property: invoice_no
+properties:
+  - { name: invoice_no,   label: 发票号码, type: string, required: true }
+  - { name: issue_date,   label: 开票日期, type: date }
+  - { name: total_amount, label: 价税合计, type: number }
+  - { name: tax_amount,   label: 税额,     type: number }
+resolution_keys:
+  - [invoice_no]
+links:
+  - { name: seller, label: 销售方, to: company }
+  - { name: buyer,  label: 购买方, to: company }
+sources:
+  - doc_type: invoice
+    map:
+      invoice_no:   invoice_no
+      issue_date:   issue_date
+      total_amount: total_amount
+      tax_amount:   tax_amount
+    link_map:
+      seller: { link: seller, to: company, property: name }
+      buyer:  { link: buyer,  to: company, property: name }

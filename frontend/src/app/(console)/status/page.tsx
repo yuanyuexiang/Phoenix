@@ -11,6 +11,22 @@ export default function StatusPage() {
   const [components, setComponents] = useState<Component[]>([]);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
+  const [rebuildMsg, setRebuildMsg] = useState("");
+  const [rebuilding, setRebuilding] = useState(false);
+
+  const rebuild = async () => {
+    if (!window.confirm("重建对象层?将清空全部对象/关系后按已入库文档重放(文档数据不受影响)。本体配置大改后使用。")) return;
+    setRebuilding(true);
+    setRebuildMsg("");
+    try {
+      const r = await api.rebuildOntology();
+      setRebuildMsg(`重建完成:重放 ${r.documents} 份已入库文档${r.warnings.length ? `,${r.warnings.length} 条警告(详见 audit_log)` : ""}`);
+    } catch (e) {
+      setRebuildMsg("重建失败:" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setRebuilding(false);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -68,6 +84,20 @@ export default function StatusPage() {
               </p>
             </div>
           ))}
+        </div>
+        <div className="mt-6 rounded-lg border border-surface-300 bg-surface-0 p-4 shadow-card">
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <p className="text-sm text-ink-700">对象层维护</p>
+              <p className="mt-0.5 text-xs text-ink-300">
+                本体配置(configs/ontology)大改后,清空对象/关系并按已入库文档全量重放;文档数据不受影响
+              </p>
+            </div>
+            <button className={`${btnCls} ml-auto`} disabled={rebuilding} onClick={rebuild}>
+              {rebuilding ? "重建中…" : "重建对象层"}
+            </button>
+          </div>
+          {rebuildMsg && <p className="mt-2 text-xs text-ink-500">{rebuildMsg}</p>}
         </div>
         <p className="mt-6 text-xs text-ink-300">
           说明:探测由 workflow 服务发起(数据库、对象存储);本页面自身不在探测范围。

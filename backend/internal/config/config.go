@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	DoctypesDir string // 单据类型 schema 目录
+	OntologyDir string // 本体定义目录(为空/不存在 = 本体层未启用)
 
 	DatabaseDSN string
 
@@ -42,6 +43,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		DoctypesDir: env("PHX_DOCTYPES_DIR", "configs/doctypes"),
+		OntologyDir: env("PHX_ONTOLOGY_DIR", "configs/ontology"),
 
 		// 默认值与 deploy/docker-compose.yml 暴露的宿主机端口一致(make infra-up 后 make run 即可用)。
 		DatabaseDSN: env("PHX_DB_DSN", "postgres://phoenix:phoenix@localhost:5433/phoenix?sslmode=disable"),

@@ -31,7 +31,7 @@ workflow/admin→SSH 部署→健康检查,测试阶段策略);PR 只跑测试�
 
 前端设计:三层主题 token(raw palette → `@theme inline` 语义色 → 组件),
 `<html data-theme>` 驱动 light/dark,企业蓝调性;NavRail 左侧图标导航
-(文档 `/`、审核 `/review`、单据类型 `/doctypes`、员工 `/users`、服务状态 `/status`),
+(文档 `/`、审核 `/review`、对象 `/objects`、单据类型 `/doctypes`、员工 `/users`、服务状态 `/status`),
 审核页为「队列列 + 编辑区」三列式。生产走 `BUILD_STATIC=1` 静态导出 + nginx
 反代 `/api` 与 `/pub/v1`;开发用 next rewrites 代理(见 `frontend/next.config.ts`)。
 
@@ -93,7 +93,13 @@ WorkBuddy 专家 ─REST(/pub/v1,Bearer)→ backend/cmd/workflow
 - `frontend/` —— 管理后台:文档列表、**人工审核**(字段修改→入库);生产用 nginx 托管并反代
 - `backend/internal/api` —— REST 契约 DTO(管理面与员工面共用);`internal/identity` —— 操作人身份(ctx 载体)
 - `backend/internal/schema` —— **可配置单据类型**:`backend/configs/doctypes/*.yaml` 定义字段与
-  校验规则,加单据类型不改代码
+  校验规则(字段可声明 `type: number|date`,校验通过后归一化落库),加单据类型不改代码
+- `backend/internal/ontology` —— **本体层(V1.4)**:`configs/ontology/*.yaml` 定义对象类型
+  (带类型属性 + resolution_keys 归一键 + 关系 + 来源单据映射),加载时引用完整性 fail-fast。
+  save 入库后物化对象/链接/证据(重放语义:先撤销该文档旧链接再重放),摘要随 save 响应返回
+  (含重复报销等 warn_duplicate 警告);删除文档清链接与证据但保留对象;
+  `POST /api/ontology/rebuild` 全量重建。文档层是权威,对象层永远可重建。
+  设计:`docs/Ontology本体层设计方案.md`
 - `backend/internal/store` —— Postgres(pgx,迁移内嵌)+ MinIO;字段存 JSONB
 
 状态机(`internal/model.Status`):`uploaded →(WorkBuddy 回传字段+正文)→ save`;
@@ -110,6 +116,8 @@ save 内跑校验,通过 → `saved`,不通过且未 force → `needs_review`(�
   (`{field, op: eq|ne|contains|gt|gte|lt|lte|in, value/values}`,数值比较自动去千分位逗号,走 `fields` JSONB)
 - `POST /pub/v1/ask`:知识库语义问答——问题向量化 → pgvector 余弦 top-K → 返回原文片段+来源
   (`internal/embed` 调可配置 embedding 端点,`PHX_EMBED_ENDPOINT` 空则知识库关闭)
+- `GET /pub/v1/objects`、`GET /pub/v1/objects/{id}`、`GET /pub/v1/documents/{id}/objects`:
+  本体对象查询(只读;对象合并/修正引导管理后台)。管理面 `/api/objects*`、`/api/ontology/*` 同形
 
 数据组织:结构化(JSONB 字段,精确/可聚合/按字段查)是主干,RAG(content_text 切片向量)是补充;
 异构单据结构用 JSONB + doctype YAML 吸收,不用 RAG。

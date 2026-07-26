@@ -33,6 +33,7 @@ import (
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/identity"
+	"github.com/yuanyuexiang/phoenix/internal/ontology"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
@@ -50,6 +51,7 @@ type HealthTarget struct {
 type Options struct {
 	Pipeline      *pipeline.Pipeline
 	Registry      *schema.Registry
+	OntReg        *ontology.Registry // 可为 nil(本体层未启用)
 	DB            *store.DB
 	AdminPassword string // 空 = 关闭鉴权
 	HealthTargets []HealthTarget
@@ -73,6 +75,11 @@ func NewHandler(opts Options) http.Handler {
 	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("GET /api/doctypes", s.doctypes)
 	mux.HandleFunc("GET /api/status", s.status)
+	mux.HandleFunc("GET /api/ontology/types", s.ontologyTypes)
+	mux.HandleFunc("GET /api/objects", s.objectsList)
+	mux.HandleFunc("GET /api/objects/{id}", s.objectGet)
+	mux.HandleFunc("GET /api/documents/{id}/objects", s.documentObjects)
+	mux.HandleFunc("POST /api/ontology/rebuild", s.ontologyRebuild)
 	mux.HandleFunc("GET /api/users", s.usersList)
 	mux.HandleFunc("POST /api/users", s.usersCreate)
 	mux.HandleFunc("PATCH /api/users/{id}", s.usersUpdate)
@@ -207,13 +214,15 @@ func (s *server) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor, _, _ := operatorOf(r)
-	doc, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.ContentText, req.DocType, req.Force, actor)
+	doc, ontSum, err := s.opts.Pipeline.Save(r.Context(), r.PathValue("id"), req.Fields, req.ContentText, req.DocType, req.Force, actor)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 	s.audit(r, "save", doc.ID, map[string]any{"force": req.Force, "has_content": req.ContentText != ""})
-	writeJSON(w, api.ToView(doc))
+	view := api.ToView(doc)
+	view.Ontology = ontSum
+	writeJSON(w, view)
 }
 
 func (s *server) query(w http.ResponseWriter, r *http.Request) {

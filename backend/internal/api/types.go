@@ -48,6 +48,22 @@ type DocumentView struct {
 	UploadedBy string                  `json:"uploaded_by,omitempty"`
 	ReviewedBy string                  `json:"reviewed_by,omitempty"`
 	CreatedAt  string                  `json:"created_at,omitempty"`
+	Ontology   *OntologySummary        `json:"ontology,omitempty"` // save 时附带的本体物化摘要
+}
+
+// OntologyObjectRef 是物化出的对象引用(save 摘要与文档联动 chips 用)。
+type OntologyObjectRef struct {
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	ID      string `json:"id"`
+	Display string `json:"display"`
+	IsNew   bool   `json:"is_new"`
+}
+
+// OntologySummary 是一次物化的结果摘要(对象引用 + 警告,如重复报销)。
+type OntologySummary struct {
+	Objects  []OntologyObjectRef `json:"objects,omitempty"`
+	Warnings []string            `json:"warnings,omitempty"`
 }
 
 // QueryResult 是 GET /api/documents 的响应体。
@@ -92,6 +108,7 @@ type FieldBrief struct {
 type BriefField struct {
 	Name        string   `json:"name"`
 	Label       string   `json:"label"`
+	Type        string   `json:"type,omitempty"` // number/date:抽取时注意可解析的规范写法
 	Description string   `json:"description,omitempty"`
 	Aliases     []string `json:"aliases,omitempty"`
 	Required    bool     `json:"required,omitempty"`

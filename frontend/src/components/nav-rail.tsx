@@ -50,9 +50,19 @@ const UsersIcon = (
   </svg>
 );
 
+const ObjectsIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
+    <circle cx="6" cy="6" r="2.6" />
+    <circle cx="18" cy="7.5" r="2.6" />
+    <circle cx="12" cy="17.5" r="2.6" />
+    <path d="M8.4 6.6l7 .7M7 8.2l3.6 7M16.8 9.8l-3.4 5.6" strokeLinecap="round" />
+  </svg>
+);
+
 const ITEMS: RailItemDef[] = [
   { href: "/", label: "文档", icon: DocsIcon, exact: true },
   { href: "/review", label: "审核", icon: ReviewIcon },
+  { href: "/objects", label: "对象", icon: ObjectsIcon },
   { href: "/doctypes", label: "单据类型", icon: SchemaIcon },
   { href: "/users", label: "员工", icon: UsersIcon },
   { href: "/status", label: "服务状态", icon: StatusIcon },

@@ -1,10 +1,11 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import * as api from "@/lib/api";
-import type { Doc, DocType, Field, Issue } from "@/lib/types";
+import type { Doc, DocType, Field, Issue, OntObject } from "@/lib/types";
 import { DOCTYPE_SPECIAL } from "@/lib/types";
 import { btnCls, btnDangerCls, btnPrimaryCls, inputCls, StatusBadge, ToastProvider, useToast } from "@/components/ui";
 
@@ -32,6 +33,8 @@ function ReviewView() {
   const [edited, setEdited] = useState<Record<string, string>>({});
   // check = 最近一次「重新校验」的预检结果(不落库);null 表示未预检。
   const [check, setCheck] = useState<{ ok: boolean; issues: Issue[] } | null>(null);
+  // 当前文档物化出的本体对象(chips 联动;本体层未启用/未入库时为空)
+  const [docObjects, setDocObjects] = useState<OntObject[]>([]);
 
   const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), false);
 
@@ -52,6 +55,13 @@ function ReviewView() {
   }, [load]);
 
   const current = useMemo(() => docs.find((d) => d.id === currentID) ?? null, [docs, currentID]);
+
+  useEffect(() => {
+    setDocObjects([]);
+    if (currentID) {
+      api.getDocumentObjects(currentID).then((r) => setDocObjects(r.objects)).catch(() => {});
+    }
+  }, [currentID]);
 
   const pending = docs.filter((d) => d.status === "needs_review");
   const others = docs.filter((d) => d.status !== "needs_review");
@@ -92,8 +102,14 @@ function ReviewView() {
 
   const act = async (fn: () => Promise<Doc>, tip: string) => {
     try {
-      patchDoc(await fn());
+      const doc = await fn();
+      patchDoc(doc);
       toast(tip);
+      // 入库后本体物化摘要:警告(如重复报销)醒目提示,并刷新对象 chips
+      for (const w of doc.ontology?.warnings ?? []) toast(w, false);
+      if (doc.ontology?.objects?.length) {
+        api.getDocumentObjects(doc.id).then((r) => setDocObjects(r.objects)).catch(() => {});
+      }
     } catch (e) {
       fail(e);
     }
@@ -145,6 +161,22 @@ function ReviewView() {
               {current.reviewed_by && <span className="text-xs text-ink-300">入库:{current.reviewed_by}</span>}
               <span className="text-xs text-ink-300">{current.created_at}</span>
             </div>
+
+            {docObjects.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-ink-300">关联对象:</span>
+                {docObjects.map((o) => (
+                  <Link
+                    key={o.id}
+                    href={`/objects?id=${o.id}`}
+                    className="rounded-full bg-accent-100 px-2.5 py-0.5 text-xs text-accent-700 no-underline hover:bg-accent-500/20"
+                    title="修正字段重新入库时,关联对象会同步更新"
+                  >
+                    {o.display_name}
+                  </Link>
+                ))}
+              </div>
+            )}
 
             {current.error && (
               <div className="mb-4 rounded-md border border-red-500/30 bg-red-100 px-4 py-3 text-sm text-red-700">

@@ -11,6 +11,7 @@ import (
 	"github.com/yuanyuexiang/phoenix/internal/config"
 	"github.com/yuanyuexiang/phoenix/internal/embed"
 	"github.com/yuanyuexiang/phoenix/internal/httpx"
+	"github.com/yuanyuexiang/phoenix/internal/ontology"
 	"github.com/yuanyuexiang/phoenix/internal/pipeline"
 	"github.com/yuanyuexiang/phoenix/internal/restapi"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
@@ -40,6 +41,17 @@ func run() error {
 	}
 	slog.Info("单据类型已加载", "types", registry.Names())
 
+	// 本体层(V1.4):目录为空则未启用,文档流水线不受影响
+	ontReg, err := ontology.Load(cfg.OntologyDir, registry)
+	if err != nil {
+		return err // 配置引用错误 fail-fast
+	}
+	if ontReg != nil {
+		slog.Info("本体层已加载", "object_types", len(ontReg.Types()))
+	} else {
+		slog.Info("本体层未启用(configs/ontology 为空)")
+	}
+
 	db, err := store.Open(ctx, cfg.DatabaseDSN)
 	if err != nil {
 		return err
@@ -66,11 +78,15 @@ func run() error {
 		Embedder:      embedder,
 		MinConfidence: cfg.MinConfidence,
 	}
+	if ontReg != nil {
+		pipe.Ontology = &ontology.Materializer{Reg: ontReg, DB: db}
+	}
 
 	// 管理面 REST(X-Access-Key;前端在用),行为不变。
 	handler := workflowapi.NewHandler(workflowapi.Options{
 		Pipeline:      pipe,
 		Registry:      registry,
+		OntReg:        ontReg,
 		DB:            db,
 		AdminPassword: cfg.AdminPassword,
 		// 识别已移至 WorkBuddy;后端不再依赖 parser/ai 服务,健康聚合只剩自身 + 存储。
@@ -80,7 +96,7 @@ func run() error {
 	// PHX_AUTH_SECRET 未配置则不挂载 —— 老部署完全不受影响。挂载时用一个顶层 mux 按前缀分流,
 	// 既有 /api、/healthz 等仍全部交给 workflowapi,一个字节都不改。
 	if cfg.AuthSecret != "" {
-		restHandler := restapi.NewHandler(restapi.Options{Pipeline: pipe, DB: db, Auth: userauth.New([]byte(cfg.AuthSecret))})
+		restHandler := restapi.NewHandler(restapi.Options{Pipeline: pipe, DB: db, Auth: userauth.New([]byte(cfg.AuthSecret)), OntReg: ontReg})
 		root := http.NewServeMux()
 		root.Handle("/pub/v1/", restHandler)
 		root.Handle("/", handler)

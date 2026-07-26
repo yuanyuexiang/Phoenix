@@ -1,7 +1,7 @@
 // workflow REST API 调用封装。开发期经 next dev rewrites、生产经 nginx 反代到 workflow。
 // 所有请求自动携带访问密钥;收到 401 时清掉本地密钥并跳回登录页。
 import { authHeaders, clearAccessKey } from "./auth";
-import type { AppUser, Component, Doc, DocType, Field, QueryResult } from "./types";
+import type { AppUser, Component, Doc, DocType, Field, ObjectDetail, OntObject, OntologyType, QueryResult } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, {
@@ -46,6 +46,22 @@ export const deleteDocument = (id: string) =>
   request<{ ok: boolean }>(`/api/documents/${id}`, { method: "DELETE" });
 
 export const fetchStatus = () => request<{ components: Component[] }>("/api/status");
+
+/* ---------- 本体层(对象/关系;configs/ontology) ---------- */
+
+export const listOntologyTypes = () => request<{ types: OntologyType[] }>("/api/ontology/types");
+
+export const queryObjects = (params: Record<string, string>) =>
+  request<{ total: number; objects: OntObject[] }>("/api/objects?" + new URLSearchParams(params));
+
+export const getObject = (id: string) => request<ObjectDetail>(`/api/objects/${id}`);
+
+export const getDocumentObjects = (docID: string) =>
+  request<{ objects: OntObject[] }>(`/api/documents/${docID}/objects`);
+
+// 全量重建对象层(本体 YAML 大改后使用;文档层不受影响)
+export const rebuildOntology = () =>
+  post<{ documents: number; warnings: string[] }>("/api/ontology/rebuild", {});
 
 /* ---------- 员工账号管理(/pub/v1 登录凭证来源) ---------- */
 

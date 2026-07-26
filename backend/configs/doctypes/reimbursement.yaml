@@ -1,0 +1,44 @@
+# 报销单 —— 员工费用报销审批单。
+# 专家侧防篡改技能(doc-tamper-check)会产出 check_result 自洽校验结论一并入库;
+# invoice_nos 为所附发票号分隔列表(分号/逗号),本体层据此建立 报销单→发票 关联。
+name: reimbursement
+title: 报销单
+description: 员工费用报销审批单,含报销人、金额、所附发票与自洽校验结论。
+fields:
+  - name: doc_no
+    label: 单据编号
+    aliases: [报销单号, 审批单编号, 编号]
+    rule:
+      required: true
+  - name: applicant
+    label: 报销人
+    aliases: [申请人, 经办人]
+    rule:
+      required: true
+  - name: title
+    label: 报销事由
+    aliases: [事由, 摘要, 用途]
+  - name: total_amount
+    label: 报销总额
+    type: number
+    aliases: [合计金额, 报销金额, 总金额]
+    rule:
+      required: true
+      pattern: '[¥￥]?[0-9,，]+(\.[0-9]{1,2})?'
+  - name: apply_date
+    label: 申请日期
+    type: date
+    aliases: [报销日期, 填单日期, 日期]
+    rule:
+      pattern: '\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}日?'
+  - name: invoice_nos
+    label: 所附发票号
+    aliases: [发票号码, 附件发票, 发票清单]
+    description: 多张发票用分号或逗号分隔,如 04431877;04431902
+  - name: approver
+    label: 审批人
+    aliases: [审批领导, 负责人, 审核人]
+  - name: check_result
+    label: 自洽校验结论
+    aliases: [校验结论, 防篡改校验]
+    description: 防篡改自洽性校验结论(如"全部自洽"或"明细差4500,需复核")

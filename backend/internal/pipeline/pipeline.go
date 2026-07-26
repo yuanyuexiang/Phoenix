@@ -18,6 +18,7 @@ import (
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/model"
+	"github.com/yuanyuexiang/phoenix/internal/ontology"
 	"github.com/yuanyuexiang/phoenix/internal/rag"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
 	"github.com/yuanyuexiang/phoenix/internal/store"
@@ -33,8 +34,9 @@ type Pipeline struct {
 	DB            *store.DB
 	Objects       *store.Objects
 	Registry      *schema.Registry
-	Embedder      Embedder // 可为 nil(知识库关闭)
-	MinConfidence float64  // 字段置信度低于此值转人工(仅当客户端回传了置信度)
+	Embedder      Embedder               // 可为 nil(知识库关闭)
+	Ontology      *ontology.Materializer // 可为 nil(本体层未启用)
+	MinConfidence float64                // 字段置信度低于此值转人工(仅当客户端回传了置信度)
 }
 
 // Upload 实现 upload_document:归档原始文件到 MinIO 并登记任务。
@@ -98,6 +100,7 @@ func briefOf(dt *schema.DocType) api.FieldBrief {
 		brief.Fields = append(brief.Fields, api.BriefField{
 			Name:        f.Name,
 			Label:       f.Label,
+			Type:        f.Type,
 			Description: f.Description,
 			Aliases:     f.Aliases,
 			Required:    f.Rule.Required,
@@ -135,6 +138,7 @@ func (p *Pipeline) Validate(ctx context.Context, id string, fields []model.Field
 		return doc, nil
 	}
 
+	doc.Fields = validate.Normalize(doc.Fields, dt) // number/date 归一化后再校验
 	doc.Status, doc.Issues = validate.Run(doc.Fields, dt, p.MinConfidence)
 	return doc, nil // 不持久化
 }
@@ -142,16 +146,16 @@ func (p *Pipeline) Validate(ctx context.Context, id string, fields []model.Field
 // Save 实现 save_database:落字段+正文,服务端权威校验后入库。
 // WorkBuddy 走「upload → save(带 fields+contentText)」直接入库,无需先 extract/validate;
 // 校验就地跑一次:不通过且未 force → needs_review(非报错,回带 issues 交客户端转述)。
-// reviewedBy 记为「入库确认人」。
-func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, contentText, docType string, force bool, reviewedBy string) (*model.Document, error) {
+// reviewedBy 记为「入库确认人」。入库成功后物化本体(best-effort),摘要随响应返回。
+func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, contentText, docType string, force bool, reviewedBy string) (*model.Document, *api.OntologySummary, error) {
 	doc, err := p.DB.GetDocument(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("文档 %s 不存在", id)
+		return nil, nil, fmt.Errorf("文档 %s 不存在", id)
 	}
 	// 已入库文档:不带任何更正内容的重复 save 幂等返回(WorkBuddy 重试安全);
 	// 带新字段/正文/类型则允许更正后重存(管理后台内联更正)。
 	if doc.Status == model.StatusSaved && len(fields) == 0 && contentText == "" && docType == "" {
-		return doc, nil
+		return doc, nil, nil
 	}
 	if docType != "" {
 		doc.DocType = docType
@@ -165,27 +169,36 @@ func (p *Pipeline) Save(ctx context.Context, id string, fields []model.Field, co
 
 	dt, ok := p.Registry.Get(doc.DocType)
 	if !ok {
-		return nil, fmt.Errorf("单据类型 %q 未配置,无法入库,请先确认类型", doc.DocType)
+		return nil, nil, fmt.Errorf("单据类型 %q 未配置,无法入库,请先确认类型", doc.DocType)
 	}
 
+	doc.Fields = validate.Normalize(doc.Fields, dt) // number/date 归一化后落库
 	status, issues := validate.Run(doc.Fields, dt, p.MinConfidence)
 	doc.Issues = issues
 	if status == model.StatusNeedsReview && !force {
 		doc.Status = model.StatusNeedsReview
 		if err := p.DB.UpdateDocument(ctx, doc); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return doc, nil // 未入库,回带 issues 供 WorkBuddy 请用户确认或修正
+		return doc, nil, nil // 未入库,回带 issues 供 WorkBuddy 请用户确认或修正
 	}
 
 	doc.Status = model.StatusSaved
 	doc.Error = ""
 	doc.ReviewedBy = reviewedBy
 	if err := p.DB.UpdateDocument(ctx, doc); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p.ingest(ctx, doc) // 知识库入库(best-effort,失败不阻断)
-	return doc, nil
+
+	var summary *api.OntologySummary
+	if p.Ontology != nil { // 本体物化(best-effort,失败进 Warnings 不阻断)
+		summary = p.Ontology.Materialize(ctx, doc)
+		for _, w := range summary.Warnings {
+			slog.Warn("本体物化警告", "document_id", doc.ID, "warning", w)
+		}
+	}
+	return doc, summary, nil
 }
 
 // ingest 把正文切片 + 向量化后存入知识库。best-effort:未启用/正文空/embedding 故障时
@@ -234,7 +247,20 @@ func (p *Pipeline) Delete(ctx context.Context, id string) error {
 			slog.Warn("删除归档文件失败(孤儿对象可后续清理)", "document_id", id, "object_key", doc.ObjectKey, "error", err)
 		}
 	}
+	if p.Ontology != nil { // 清除该文档的链接与证据(对象保留,见设计方案 §5.1)
+		if err := p.DB.DeleteDocumentOntology(ctx, id); err != nil {
+			slog.Warn("清除文档本体痕迹失败(可用重建修复)", "document_id", id, "error", err)
+		}
+	}
 	return nil
+}
+
+// RebuildOntology 全量重建对象层(本体 YAML 大改后使用,管理后台触发)。
+func (p *Pipeline) RebuildOntology(ctx context.Context) (int, []string, error) {
+	if p.Ontology == nil {
+		return 0, nil, fmt.Errorf("本体层未启用(configs/ontology 为空)")
+	}
+	return p.Ontology.Rebuild(ctx, p.DB.ListSavedDocuments)
 }
 
 // Ask 实现 ask_document:把问题向量化后做语义检索,返回相关正文片段与来源文档。

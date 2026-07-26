@@ -158,7 +158,50 @@ func main() {
 	}
 	fmt.Println("  ✓ query 字段级过滤反向验证(金额>999999 无命中)")
 
-	// 8. 知识库语义问答(-rag,workflow 须配置 PHX_EMBED_*;save 时已把正文切片+向量入库)
+	// 8. 本体层:入库应物化出 合同/公司 对象与甲乙方关系(configs/ontology)
+	ores := c.call(ctx, http.MethodGet, "/objects?"+url.Values{
+		"type": {"contract"}, "property_filters": {`[{"field":"doc_no","op":"eq","value":"PHX-2026-0001"}]`},
+	}.Encode(), nil)
+	if total, _ := ores["total"].(float64); total < 1 {
+		log.Fatalf("本体物化:应查到合同对象 PHX-2026-0001,得到 total=%v", ores["total"])
+	}
+	contractID := ores["objects"].([]any)[0].(map[string]any)["id"].(string)
+	odetail := c.call(ctx, http.MethodGet, "/objects/"+contractID, nil)
+	if outLinks, _ := odetail["links_out"].([]any); len(outLinks) < 2 {
+		log.Fatalf("本体物化:合同应有甲/乙方两条关系,得到 %d", len(outLinks))
+	}
+	cres := c.call(ctx, http.MethodGet, "/objects?"+url.Values{"type": {"company"}, "keyword": {"科技"}}.Encode(), nil)
+	if total, _ := cres["total"].(float64); total < 1 {
+		log.Fatalf("本体物化:应查到公司对象(科技),得到 total=%v", cres["total"])
+	}
+	fmt.Println("  ✓ 本体物化:合同/公司对象与甲乙方关系已生成")
+
+	// 9. 重复报销检测:两张报销单引用同一发票号,第二张的物化摘要应带警告
+	mkReimb := func(no string) map[string]any {
+		up := c.call(ctx, http.MethodPost, "/documents", map[string]any{
+			"doc_type": "reimbursement", "filename": no + ".txt", "content_text": "报销单 " + no,
+		})
+		return c.call(ctx, http.MethodPost, "/documents/"+up["id"].(string)+"/save", map[string]any{
+			"doc_type": "reimbursement",
+			"fields": []map[string]any{
+				{"name": "doc_no", "value": no},
+				{"name": "applicant", "value": "张三"},
+				{"name": "total_amount", "value": "1,000.00"},
+				{"name": "invoice_nos", "value": "04431877"},
+			},
+			"content_text": "报销单 " + no,
+		})
+	}
+	mkReimb("BX-SMOKE-001")
+	second := mkReimb("BX-SMOKE-002")
+	ont, _ := second["ontology"].(map[string]any)
+	warns, _ := ont["warnings"].([]any)
+	if len(warns) == 0 {
+		log.Fatalf("重复报销检测:第二张报销单应带警告,得到 %v", second["ontology"])
+	}
+	fmt.Printf("  ✓ 重复报销检测触发: %v\n", warns[0])
+
+	// 10. 知识库语义问答(-rag,workflow 须配置 PHX_EMBED_*;save 时已把正文切片+向量入库)
 	if *rag {
 		ares := c.call(ctx, http.MethodPost, "/ask", map[string]any{
 			"question": "这个采购项目的金额是多少?", "limit": 3,

@@ -24,8 +24,9 @@ type Rule struct {
 
 // FieldSpec 声明一个待提取字段。
 type FieldSpec struct {
-	Name        string   `yaml:"name" json:"name"`   // 字段英文名,入库用
-	Label       string   `yaml:"label" json:"label"` // 中文标签,提取与展示用
+	Name        string   `yaml:"name" json:"name"`                     // 字段英文名,入库用
+	Label       string   `yaml:"label" json:"label"`                   // 中文标签,提取与展示用
+	Type        string   `yaml:"type,omitempty" json:"type,omitempty"` // ""/string | number | date;非 string 在校验通过后归一化落库
 	Description string   `yaml:"description,omitempty" json:"description,omitempty"`
 	Aliases     []string `yaml:"aliases,omitempty" json:"aliases,omitempty"` // 文档中可能出现的其他叫法
 	Rule        Rule     `yaml:"rule,omitempty" json:"rule"`
@@ -90,6 +91,11 @@ func (dt *DocType) check() error {
 			return fmt.Errorf("单据类型 %q 字段 %q 重复", dt.Name, f.Name)
 		}
 		seen[f.Name] = true
+		switch f.Type {
+		case "", "string", "number", "date":
+		default:
+			return fmt.Errorf("字段 %q 的 type 非法(%q,仅支持 string/number/date)", f.Name, f.Type)
+		}
 		if f.Rule.Pattern != "" {
 			if _, err := regexp.Compile(f.Rule.Pattern); err != nil {
 				return fmt.Errorf("字段 %q 的 pattern 非法: %w", f.Name, err)

@@ -1,0 +1,10 @@
+# 员工 —— 把"单据上的人"与"登录的人"接到同一实体。
+name: employee
+title: 员工
+display_property: name
+properties:
+  - { name: name,     label: 姓名,     type: string, required: true }
+  - { name: username, label: 平台账号, type: string }
+resolution_keys:
+  - [username]
+  - [name]          # 单据上只有姓名时按姓名归一(同名口径待客户确认)

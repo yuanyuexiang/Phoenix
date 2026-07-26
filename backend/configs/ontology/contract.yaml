@@ -1,0 +1,24 @@
+# 合同/确认单 —— 由通用单据物化(客户确认正式单据类型前的过渡形态)。
+name: contract
+title: 合同
+display_property: title
+properties:
+  - { name: doc_no,     label: 编号, type: string, required: true }
+  - { name: title,      label: 标题, type: string }
+  - { name: amount,     label: 金额, type: number }
+  - { name: issue_date, label: 日期, type: date }
+resolution_keys:
+  - [doc_no]
+links:
+  - { name: party_a, label: 甲方, to: company }
+  - { name: party_b, label: 乙方, to: company }
+sources:
+  - doc_type: generic
+    map:
+      doc_no:     doc_no
+      title:      title
+      amount:     amount
+      issue_date: issue_date
+    link_map:
+      party_a: { link: party_a, to: company, property: name }
+      party_b: { link: party_b, to: company, property: name }

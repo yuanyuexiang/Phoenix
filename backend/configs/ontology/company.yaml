@@ -1,0 +1,11 @@
+# 公司 —— 供应商/客户/甲乙方的归一实体。无直接来源单据,
+# 由其他对象的 link_map(销售方/购买方/甲方/乙方)物化产生。
+name: company
+title: 公司
+display_property: name
+properties:
+  - { name: name,   label: 公司名称,     type: string, required: true }
+  - { name: tax_no, label: 纳税人识别号, type: string }
+resolution_keys:
+  - [tax_no]        # 有税号精确归一
+  - [name]          # 否则按归一化名称(去空白/全角转半角/小写)
