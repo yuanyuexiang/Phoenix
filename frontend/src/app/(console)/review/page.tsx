@@ -35,6 +35,8 @@ function ReviewView() {
   const [check, setCheck] = useState<{ ok: boolean; issues: Issue[] } | null>(null);
   // 当前文档物化出的本体对象(chips 联动;本体层未启用/未入库时为空)
   const [docObjects, setDocObjects] = useState<OntObject[]>([]);
+  // 归档原件预览(blob URL);null=加载中/无选中,error=原件不可用
+  const [preview, setPreview] = useState<{ url: string; contentType: string } | "error" | null>(null);
 
   const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), false);
 
@@ -61,6 +63,23 @@ function ReviewView() {
     if (currentID) {
       api.getDocumentObjects(currentID).then((r) => setDocObjects(r.objects)).catch(() => {});
     }
+  }, [currentID]);
+
+  useEffect(() => {
+    let revoked: string | null = null;
+    setPreview(null);
+    if (currentID) {
+      api
+        .fetchDocumentFile(currentID)
+        .then((p) => {
+          revoked = p.url;
+          setPreview(p);
+        })
+        .catch(() => setPreview("error"));
+    }
+    return () => {
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
   }, [currentID]);
 
   const pending = docs.filter((d) => d.status === "needs_review");
@@ -148,7 +167,8 @@ function ReviewView() {
             从左侧选择一份文档开始审核
           </div>
         ) : (
-          <div className="mx-auto max-w-[760px] p-6">
+          <div className="flex gap-6 p-6">
+          <div className="min-w-0 max-w-[760px] flex-1">
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <h2 className="text-base font-semibold text-ink-900">{current.filename}</h2>
               <StatusBadge status={current.status} />
@@ -286,6 +306,56 @@ function ReviewView() {
               建议先「重新校验」预检(不入库,只看当前编辑能否通过),确认无误再「保存并入库」正式写入。
               {current.status === "saved" && " 本文档已入库,修改后「保存更正」即更新数据。"}
             </p>
+          </div>
+
+          {/* 原件对照:图片/PDF 内联预览,其余提供下载(核对字段无需切窗口) */}
+          <aside className="hidden w-[44%] min-w-0 shrink-0 lg:block">
+            <div className="sticky top-6">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium text-ink-300">原件对照</p>
+                {preview && preview !== "error" && (
+                  <a
+                    href={preview.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-accent-500 no-underline hover:underline"
+                  >
+                    新窗口打开
+                  </a>
+                )}
+              </div>
+              {preview === null && <p className="text-xs text-ink-300">原件加载中…</p>}
+              {preview === "error" && (
+                <p className="rounded-md border border-surface-300 bg-surface-100 px-3 py-4 text-xs text-ink-300">
+                  原件不可用(未归档或读取失败)
+                </p>
+              )}
+              {preview && preview !== "error" && preview.contentType.startsWith("image/") && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={preview.url}
+                  alt={current.filename}
+                  className="max-h-[80vh] w-full rounded-lg border border-surface-300 bg-surface-0 object-contain shadow-card"
+                />
+              )}
+              {preview && preview !== "error" &&
+                (preview.contentType.includes("pdf") || preview.contentType.startsWith("text/")) && (
+                  <iframe
+                    src={preview.url}
+                    title={current.filename}
+                    className="h-[80vh] w-full rounded-lg border border-surface-300 bg-surface-0 shadow-card"
+                  />
+                )}
+              {preview && preview !== "error" &&
+                !preview.contentType.startsWith("image/") &&
+                !preview.contentType.includes("pdf") &&
+                !preview.contentType.startsWith("text/") && (
+                  <a href={preview.url} download={current.filename} className={`${btnCls} inline-block no-underline`}>
+                    下载原件({current.filename})
+                  </a>
+                )}
+            </div>
+          </aside>
           </div>
         )}
       </div>

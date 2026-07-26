@@ -6,6 +6,7 @@
 //	POST /api/documents/{id}/validate  对回传字段做 schema 校验
 //	POST /api/documents/{id}/save      落字段+正文并入库(WorkBuddy 已识别完成)
 //	GET    /api/documents              查询(doc_type/status/keyword/uploaded_by/field_filters/limit)
+//	GET  /api/documents/{id}/file      归档原件(审核台原件预览)
 //	DELETE /api/documents/{id}         删除文档(结构化+知识库切片+归档原件;管理后台用)
 //	POST /api/ask                      知识库语义问答
 //	GET  /api/doctypes                 单据类型配置(管理后台用)
@@ -27,6 +28,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -71,6 +74,7 @@ func NewHandler(opts Options) http.Handler {
 	mux.HandleFunc("POST /api/documents/{id}/validate", s.validate)
 	mux.HandleFunc("POST /api/documents/{id}/save", s.save)
 	mux.HandleFunc("GET /api/documents", s.query)
+	mux.HandleFunc("GET /api/documents/{id}/file", s.file)
 	mux.HandleFunc("DELETE /api/documents/{id}", s.delete)
 	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("GET /api/doctypes", s.doctypes)
@@ -190,6 +194,42 @@ func (s *server) extract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, brief)
+}
+
+// file 输出归档原件(审核台原件预览用):按扩展名给 Content-Type,浏览器内联展示。
+func (s *server) file(w http.ResponseWriter, r *http.Request) {
+	doc, err := s.opts.DB.GetDocument(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "文档不存在")
+		return
+	}
+	if doc.ObjectKey == "" {
+		writeError(w, http.StatusNotFound, "该文档没有归档原件")
+		return
+	}
+	data, err := s.opts.Pipeline.Objects.Get(r.Context(), doc.ObjectKey)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "读取归档原件失败: "+err.Error())
+		return
+	}
+	ct := "application/octet-stream"
+	switch strings.ToLower(filepath.Ext(doc.Filename)) {
+	case ".jpg", ".jpeg":
+		ct = "image/jpeg"
+	case ".png":
+		ct = "image/png"
+	case ".gif":
+		ct = "image/gif"
+	case ".webp":
+		ct = "image/webp"
+	case ".pdf":
+		ct = "application/pdf"
+	case ".txt":
+		ct = "text/plain; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Disposition", "inline; filename*=UTF-8''"+url.PathEscape(doc.Filename))
+	_, _ = w.Write(data)
 }
 
 func (s *server) validate(w http.ResponseWriter, r *http.Request) {

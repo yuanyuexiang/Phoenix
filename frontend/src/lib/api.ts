@@ -47,6 +47,14 @@ export const deleteDocument = (id: string) =>
 
 export const fetchStatus = () => request<{ components: Component[] }>("/api/status");
 
+/** 归档原件(审核台预览):带鉴权头取回,返回 blob 对象 URL(调用方负责 revokeObjectURL)。 */
+export const fetchDocumentFile = async (id: string): Promise<{ url: string; contentType: string }> => {
+  const resp = await fetch(`/api/documents/${id}/file`, { headers: authHeaders() });
+  if (!resp.ok) throw new Error(`原件不可用(HTTP ${resp.status})`);
+  const blob = await resp.blob();
+  return { url: URL.createObjectURL(blob), contentType: resp.headers.get("Content-Type") ?? "" };
+};
+
 /* ---------- 本体层(对象/关系;configs/ontology) ---------- */
 
 export const listOntologyTypes = () => request<{ types: OntologyType[] }>("/api/ontology/types");
