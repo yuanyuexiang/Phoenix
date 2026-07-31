@@ -15,6 +15,7 @@ import (
 //	GET  /api/ontology/types           对象类型清单(前端 tabs)
 //	GET  /api/objects                  对象列表(type/keyword/property_filters/limit)
 //	GET  /api/objects/{id}             对象详情(属性+出入链+证据文档)
+//	GET  /api/graph/neighborhood       中心对象的一跳/两跳关系子图
 //	GET  /api/documents/{id}/objects   某文档物化出的对象(文档/审核页联动 chips)
 //	POST /api/ontology/rebuild         全量重建对象层(本体 YAML 大改后使用)
 
@@ -60,6 +61,32 @@ func (s *server) objectGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, detail)
+}
+
+func (s *server) graphNeighborhood(w http.ResponseWriter, r *http.Request) {
+	if !s.ontologyEnabled(w) {
+		return
+	}
+	center := r.URL.Query().Get("object_id")
+	if center == "" {
+		writeError(w, http.StatusBadRequest, "object_id 不能为空")
+		return
+	}
+	depth, _ := strconv.Atoi(r.URL.Query().Get("depth"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	graph, err := s.opts.DB.GetGraphNeighborhood(r.Context(), center, depth, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if graph == nil {
+		writeError(w, http.StatusNotFound, "对象不存在")
+		return
+	}
+	for i := range graph.Edges {
+		graph.Edges[i].LinkTitle = s.opts.OntReg.LinkTitle(graph.Edges[i].FromType, graph.Edges[i].LinkType)
+	}
+	writeJSON(w, graph)
 }
 
 func (s *server) documentObjects(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +196,12 @@ func ObjectDetailForAPI(r *http.Request, db *store.DB, reg *ontology.Registry) (
 	}
 	if in == nil {
 		in = []store.OntLink{}
+	}
+	for i := range out {
+		out[i].LinkTitle = reg.LinkTitle(out[i].FromType, out[i].LinkType)
+	}
+	for i := range in {
+		in[i].LinkTitle = reg.LinkTitle(in[i].FromType, in[i].LinkType)
 	}
 	return map[string]any{
 		"object": obj, "type_title": typeTitle,

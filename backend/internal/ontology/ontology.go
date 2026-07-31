@@ -200,6 +200,20 @@ func (r *Registry) Get(name string) (*ObjectType, bool) {
 	return ot, ok
 }
 
+// LinkTitle 返回某对象类型出链的中文业务名称，图和详情页不直接暴露内部标识。
+func (r *Registry) LinkTitle(fromType, linkName string) string {
+	ot, ok := r.byName[fromType]
+	if !ok {
+		return linkName
+	}
+	for _, link := range ot.Links {
+		if link.Name == linkName {
+			return link.Label
+		}
+	}
+	return linkName
+}
+
 // BySource 返回会被指定单据类型物化的对象类型。
 func (r *Registry) BySource(docType string) []*ObjectType {
 	return r.bySource[docType]

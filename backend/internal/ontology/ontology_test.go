@@ -41,3 +41,15 @@ func TestKeyHashes(t *testing.T) {
 		t.Fatal("无可用属性时不应生成键")
 	}
 }
+
+func TestRegistryLinkTitle(t *testing.T) {
+	r := &Registry{byName: map[string]*ObjectType{
+		"invoice": {Name: "invoice", Links: []LinkDef{{Name: "seller", Label: "销售方", To: "company"}}},
+	}}
+	if got := r.LinkTitle("invoice", "seller"); got != "销售方" {
+		t.Fatalf("LinkTitle = %q, want 销售方", got)
+	}
+	if got := r.LinkTitle("invoice", "unknown"); got != "unknown" {
+		t.Fatalf("未知关系应回退内部标识,得到 %q", got)
+	}
+}

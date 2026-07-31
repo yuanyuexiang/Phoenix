@@ -82,6 +82,7 @@ func NewHandler(opts Options) http.Handler {
 	mux.HandleFunc("GET /api/ontology/types", s.ontologyTypes)
 	mux.HandleFunc("GET /api/objects", s.objectsList)
 	mux.HandleFunc("GET /api/objects/{id}", s.objectGet)
+	mux.HandleFunc("GET /api/graph/neighborhood", s.graphNeighborhood)
 	mux.HandleFunc("GET /api/documents/{id}/objects", s.documentObjects)
 	mux.HandleFunc("POST /api/ontology/rebuild", s.ontologyRebuild)
 	mux.HandleFunc("GET /api/users", s.usersList)

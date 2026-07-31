@@ -56,6 +56,7 @@ export interface OntObject {
 
 export interface OntLink {
   link_type: string;
+  link_title?: string;
   from_id: string;
   from_type: string;
   from_display: string;
@@ -71,6 +72,13 @@ export interface ObjectDetail {
   links_out: OntLink[];
   links_in: OntLink[];
   documents: Doc[];
+}
+
+export interface OntGraph {
+  center: string;
+  nodes: OntObject[];
+  edges: OntLink[];
+  truncated: boolean;
 }
 
 export interface OntologySummary {

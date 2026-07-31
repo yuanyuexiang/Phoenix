@@ -28,6 +28,7 @@ type OntObject struct {
 // OntLink 是一条类型化关系(含两端展示信息与来源文档)。
 type OntLink struct {
 	LinkType    string `json:"link_type"`
+	LinkTitle   string `json:"link_title,omitempty"`
 	FromID      string `json:"from_id"`
 	FromType    string `json:"from_type"`
 	FromDisplay string `json:"from_display"`
@@ -35,6 +36,14 @@ type OntLink struct {
 	ToType      string `json:"to_type"`
 	ToDisplay   string `json:"to_display"`
 	DocumentID  string `json:"document_id"`
+}
+
+// OntGraph 是围绕一个中心对象按需展开的关系子图。对象库可以很大，UI 不应一次加载全库。
+type OntGraph struct {
+	Center    string      `json:"center"`
+	Nodes     []OntObject `json:"nodes"`
+	Edges     []OntLink   `json:"edges"`
+	Truncated bool        `json:"truncated"`
 }
 
 // ErrKeyConflict 表示并发创建同一实体时归一键撞车(调用方重试解析一次即可)。
@@ -296,6 +305,79 @@ func (db *DB) GetObject(ctx context.Context, id string) (*OntObject, []OntLink, 
 		docIDs = append(docIDs, d)
 	}
 	return o, outLinks, inLinks, docIDs, rows.Err()
+}
+
+// GetGraphNeighborhood 返回中心对象 depth 跳以内的关系子图。使用小规模 BFS 是为了
+// 复用 GetObject 的稳定查询语义；limit 是防止高连接度对象拖垮管理端画布的硬上限。
+func (db *DB) GetGraphNeighborhood(ctx context.Context, center string, depth, limit int) (*OntGraph, error) {
+	if depth < 1 {
+		depth = 1
+	}
+	if depth > 2 {
+		depth = 2
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+
+	graph := &OntGraph{Center: center, Nodes: []OntObject{}, Edges: []OntLink{}}
+	type queued struct {
+		id    string
+		level int
+	}
+	queue := []queued{{id: center}}
+	seenNodes := map[string]bool{}
+	seenEdges := map[string]bool{}
+
+	for len(queue) > 0 {
+		item := queue[0]
+		queue = queue[1:]
+		if seenNodes[item.id] {
+			continue
+		}
+		obj, out, in, _, err := db.GetObject(ctx, item.id)
+		if err != nil {
+			return nil, err
+		}
+		if obj == nil {
+			if item.id == center {
+				return nil, nil
+			}
+			continue
+		}
+		seenNodes[item.id] = true
+		graph.Nodes = append(graph.Nodes, *obj)
+		if len(graph.Nodes) >= limit {
+			graph.Truncated = len(queue) > 0 || item.level < depth
+			break
+		}
+		if item.level >= depth {
+			continue
+		}
+		for _, edge := range append(out, in...) {
+			key := edge.LinkType + "\x00" + edge.FromID + "\x00" + edge.ToID + "\x00" + edge.DocumentID
+			if !seenEdges[key] {
+				seenEdges[key] = true
+				graph.Edges = append(graph.Edges, edge)
+			}
+			other := edge.ToID
+			if other == item.id {
+				other = edge.FromID
+			}
+			if !seenNodes[other] {
+				queue = append(queue, queued{id: other, level: item.level + 1})
+			}
+		}
+	}
+	// 节点上限截断时，移除指向未返回节点的悬空边，保证前端图契约完整。
+	visibleEdges := graph.Edges[:0]
+	for _, edge := range graph.Edges {
+		if seenNodes[edge.FromID] && seenNodes[edge.ToID] {
+			visibleEdges = append(visibleEdges, edge)
+		}
+	}
+	graph.Edges = visibleEdges
+	return graph, nil
 }
 
 // ListObjectsByDocument 返回某文档物化出的全部对象(文档/审核页联动用)。

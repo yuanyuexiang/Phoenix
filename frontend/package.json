@@ -8,7 +8,8 @@
     "start": "next start -p 8084"
   },
   "dependencies": {
-    "next": "^16.2.6",
+    "@xyflow/react": "^12.11.2",
+    "next": "^16.2.11",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
