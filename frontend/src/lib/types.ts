@@ -64,6 +64,7 @@ export interface OntLink {
   to_type: string;
   to_display: string;
   document_id: string;
+  source_count?: number;
 }
 
 export interface ObjectDetail {
@@ -75,7 +76,7 @@ export interface ObjectDetail {
 }
 
 export interface OntGraph {
-  center: string;
+  center?: string;
   nodes: OntObject[];
   edges: OntLink[];
   truncated: boolean;

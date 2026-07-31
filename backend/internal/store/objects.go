@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -36,6 +37,86 @@ type OntLink struct {
 	ToType      string `json:"to_type"`
 	ToDisplay   string `json:"to_display"`
 	DocumentID  string `json:"document_id"`
+	SourceCount int    `json:"source_count,omitempty"`
+}
+
+// GetGlobalGraph 返回经过轻量筛选的全局对象关系图。它包含孤立对象，方便发现尚未建立
+// 业务关系的数据；调用方可以关闭 includeIsolated 只看已连接网络。
+func (db *DB) GetGlobalGraph(ctx context.Context, types []string, keyword string, includeIsolated bool, limit int) (*OntGraph, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	rows, err := db.pool.Query(ctx, `
+		SELECT id, object_type, display_name, properties, version, created_at, updated_at
+		FROM objects
+		WHERE (cardinality($1::text[]) = 0 OR object_type = ANY($1::text[]))
+		  AND ($2 = '' OR display_name ILIKE '%' || $2 || '%')
+		ORDER BY updated_at DESC LIMIT $3`, types, keyword, limit+1)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := scanObjects(rows)
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	truncated := len(nodes) > limit
+	if truncated {
+		nodes = nodes[:limit]
+	}
+
+	ids := make([]uuid.UUID, 0, len(nodes))
+	for _, node := range nodes {
+		id, err := uuid.Parse(node.ID)
+		if err != nil {
+			return nil, fmt.Errorf("对象 ID 非法 %q: %w", node.ID, err)
+		}
+		ids = append(ids, id)
+	}
+	edges := []OntLink{}
+	if len(ids) > 0 {
+		edgeRows, err := db.pool.Query(ctx, `
+			SELECT l.link_type, l.from_object, f.object_type, f.display_name,
+			       l.to_object, t.object_type, t.display_name,
+			       (array_agg(l.document_id ORDER BY l.document_id))[1], COUNT(DISTINCT l.document_id)
+			FROM links l
+			JOIN objects f ON f.id = l.from_object
+			JOIN objects t ON t.id = l.to_object
+			WHERE l.from_object = ANY($1::uuid[]) AND l.to_object = ANY($1::uuid[])
+			GROUP BY l.link_type, l.from_object, f.object_type, f.display_name,
+			         l.to_object, t.object_type, t.display_name
+			ORDER BY l.link_type`, ids)
+		if err != nil {
+			return nil, err
+		}
+		defer edgeRows.Close()
+		for edgeRows.Next() {
+			var edge OntLink
+			if err := edgeRows.Scan(&edge.LinkType, &edge.FromID, &edge.FromType, &edge.FromDisplay,
+				&edge.ToID, &edge.ToType, &edge.ToDisplay, &edge.DocumentID, &edge.SourceCount); err != nil {
+				return nil, err
+			}
+			edges = append(edges, edge)
+		}
+		if err := edgeRows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	if !includeIsolated {
+		connected := map[string]bool{}
+		for _, edge := range edges {
+			connected[edge.FromID], connected[edge.ToID] = true, true
+		}
+		filtered := nodes[:0]
+		for _, node := range nodes {
+			if connected[node.ID] {
+				filtered = append(filtered, node)
+			}
+		}
+		nodes = filtered
+	}
+	return &OntGraph{Nodes: nodes, Edges: edges, Truncated: truncated}, nil
 }
 
 // OntGraph 是围绕一个中心对象按需展开的关系子图。对象库可以很大，UI 不应一次加载全库。

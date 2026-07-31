@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/yuanyuexiang/phoenix/internal/api"
 	"github.com/yuanyuexiang/phoenix/internal/ontology"
@@ -16,6 +17,7 @@ import (
 //	GET  /api/objects                  对象列表(type/keyword/property_filters/limit)
 //	GET  /api/objects/{id}             对象详情(属性+出入链+证据文档)
 //	GET  /api/graph/neighborhood       中心对象的一跳/两跳关系子图
+//	GET  /api/graph                    全局对象关系图(可按类型/关键词过滤)
 //	GET  /api/documents/{id}/objects   某文档物化出的对象(文档/审核页联动 chips)
 //	POST /api/ontology/rebuild         全量重建对象层(本体 YAML 大改后使用)
 
@@ -81,6 +83,30 @@ func (s *server) graphNeighborhood(w http.ResponseWriter, r *http.Request) {
 	}
 	if graph == nil {
 		writeError(w, http.StatusNotFound, "对象不存在")
+		return
+	}
+	for i := range graph.Edges {
+		graph.Edges[i].LinkTitle = s.opts.OntReg.LinkTitle(graph.Edges[i].FromType, graph.Edges[i].LinkType)
+	}
+	writeJSON(w, graph)
+}
+
+func (s *server) graphGlobal(w http.ResponseWriter, r *http.Request) {
+	if !s.ontologyEnabled(w) {
+		return
+	}
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	types := []string{}
+	for _, value := range strings.Split(q.Get("object_types"), ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			types = append(types, value)
+		}
+	}
+	includeIsolated := q.Get("include_isolated") != "false"
+	graph, err := s.opts.DB.GetGlobalGraph(r.Context(), types, q.Get("keyword"), includeIsolated, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	for i := range graph.Edges {

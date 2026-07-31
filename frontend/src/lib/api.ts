@@ -67,6 +67,13 @@ export const getObject = (id: string) => request<ObjectDetail>(`/api/objects/${i
 export const getObjectGraph = (id: string, depth = 1) =>
   request<OntGraph>(`/api/graph/neighborhood?${new URLSearchParams({ object_id: id, depth: String(depth), limit: "100" })}`);
 
+export const getGlobalObjectGraph = (params?: { objectType?: string; keyword?: string; includeIsolated?: boolean }) => {
+  const query = new URLSearchParams({ limit: "500", include_isolated: String(params?.includeIsolated ?? true) });
+  if (params?.objectType) query.set("object_types", params.objectType);
+  if (params?.keyword) query.set("keyword", params.keyword);
+  return request<OntGraph>(`/api/graph?${query}`);
+};
+
 export const getDocumentObjects = (docID: string) =>
   request<{ objects: OntObject[] }>(`/api/documents/${docID}/objects`);
 

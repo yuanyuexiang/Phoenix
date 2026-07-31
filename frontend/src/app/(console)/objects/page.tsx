@@ -52,7 +52,10 @@ function ObjectsView() {
   const [objects, setObjects] = useState<OntObject[]>([]);
   const [detail, setDetail] = useState<ObjectDetail | null>(null);
   const [graph, setGraph] = useState<OntGraph | null>(null);
+  const [mode, setMode] = useState<"global" | "focus">(preselect ? "focus" : "global");
+  const [focusID, setFocusID] = useState<string | null>(preselect);
   const [depth, setDepth] = useState(1);
+  const [includeIsolated, setIncludeIsolated] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const fail = useCallback((e: unknown) => toast(e instanceof Error ? e.message : String(e), false), [toast]);
@@ -67,43 +70,69 @@ function ObjectsView() {
     [fail],
   );
 
-  const explore = useCallback(
-    async (id: string, nextDepth = depth) => {
+  const loadGlobal = useCallback(
+    async (objectType = "", query = "", isolated = true) => {
       setLoading(true);
       try {
-        const [nextGraph, nextDetail] = await Promise.all([api.getObjectGraph(id, nextDepth), api.getObject(id)]);
-        setGraph(nextGraph);
-        setDetail(nextDetail);
+        setGraph(await api.getGlobalObjectGraph({ objectType, keyword: query, includeIsolated: isolated }));
+        setMode("global");
       } catch (e) {
         fail(e);
       } finally {
         setLoading(false);
       }
     },
-    [depth, fail],
+    [fail],
+  );
+
+  const explore = useCallback(
+    async (id: string, nextDepth: number) => {
+      setLoading(true);
+      try {
+        const [nextGraph, nextDetail] = await Promise.all([api.getObjectGraph(id, nextDepth), api.getObject(id)]);
+        setGraph(nextGraph);
+        setDetail(nextDetail);
+        setFocusID(id);
+        setMode("focus");
+      } catch (e) {
+        fail(e);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fail],
   );
 
   useEffect(() => {
     api.listOntologyTypes().then((r) => setTypes(r.types)).catch(fail);
     loadList("", "");
     if (preselect) explore(preselect, 1);
-  }, [explore, fail, loadList, preselect]);
+    else loadGlobal();
+  }, [explore, fail, loadGlobal, loadList, preselect]);
 
   const selectNode: NodeMouseHandler = useCallback(
-    (_, node) => api.getObject(node.id).then(setDetail).catch(fail),
+    (_, node) => {
+      setFocusID(node.id);
+      api.getObject(node.id).then(setDetail).catch(fail);
+    },
     [fail],
   );
-  const centerNode: NodeMouseHandler = useCallback((_, node) => explore(node.id), [explore]);
+  const centerNode: NodeMouseHandler = useCallback((_, node) => explore(node.id, depth), [depth, explore]);
   const flow = useMemo(() => graphToFlow(graph, types), [graph, types]);
 
   const changeDepth = (value: number) => {
     setDepth(value);
-    if (graph?.center) explore(graph.center, value);
+    if (focusID) explore(focusID, value);
+  };
+
+  const search = () => {
+    loadList(type, keyword);
+    if (mode === "global") loadGlobal(type, keyword, includeIsolated);
   };
 
   return (
     <>
-      <PageHeader title="对象关系" desc="以业务对象为中心探索公司、员工、合同、发票与报销之间的关系和证据" />
+      <PageHeader title="对象关系" desc="默认纵览全部业务对象及其连接，也可聚焦任一对象进行一跳或两跳调查" />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside className="flex w-[250px] shrink-0 flex-col border-r border-surface-300 bg-surface-0">
           <div className="space-y-2 border-b border-surface-300 p-3">
@@ -112,7 +141,7 @@ function ObjectsView() {
               placeholder="搜索对象名称…"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && loadList(type, keyword)}
+              onKeyDown={(e) => e.key === "Enter" && search()}
             />
             <select
               className={`${inputCls} w-full`}
@@ -120,6 +149,7 @@ function ObjectsView() {
               onChange={(e) => {
                 setType(e.target.value);
                 loadList(e.target.value, keyword);
+                if (mode === "global") loadGlobal(e.target.value, keyword, includeIsolated);
               }}
             >
               <option value="">全部对象类型</option>
@@ -133,8 +163,8 @@ function ObjectsView() {
               return (
                 <button
                   key={object.id}
-                  onClick={() => explore(object.id)}
-                  className={`mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-surface-100 ${graph?.center === object.id ? "bg-accent-500/10" : ""}`}
+                  onClick={() => explore(object.id, depth)}
+                  className={`mb-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-surface-100 ${focusID === object.id && mode === "focus" ? "bg-accent-500/10" : ""}`}
                 >
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-semibold" style={{ background: meta.soft, color: meta.color }}>
                     {meta.glyph}
@@ -151,15 +181,30 @@ function ObjectsView() {
 
         <main className="relative min-w-0 flex-1 bg-surface-100">
           <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-lg border border-surface-300 bg-surface-0/95 p-1.5 shadow-card backdrop-blur">
-            <button className={depth === 1 ? btnCls + " bg-accent-100 text-accent-700" : btnCls} onClick={() => changeDepth(1)}>一跳</button>
-            <button className={depth === 2 ? btnCls + " bg-accent-100 text-accent-700" : btnCls} onClick={() => changeDepth(2)}>两跳</button>
+            <button className={mode === "global" ? btnCls + " bg-accent-100 text-accent-700" : btnCls} onClick={() => loadGlobal(type, keyword, includeIsolated)}>全局关系图</button>
+            <span className="h-5 w-px bg-surface-300" />
+            <button disabled={!focusID} className={mode === "focus" && depth === 1 ? btnCls + " bg-accent-100 text-accent-700" : btnCls} onClick={() => changeDepth(1)}>中心一跳</button>
+            <button disabled={!focusID} className={mode === "focus" && depth === 2 ? btnCls + " bg-accent-100 text-accent-700" : btnCls} onClick={() => changeDepth(2)}>中心两跳</button>
+            {mode === "global" && (
+              <label className="flex items-center gap-1 text-xs text-ink-300">
+                <input
+                  type="checkbox"
+                  checked={includeIsolated}
+                  onChange={(e) => {
+                    setIncludeIsolated(e.target.checked);
+                    loadGlobal(type, keyword, e.target.checked);
+                  }}
+                />
+                孤立对象
+              </label>
+            )}
             <span className="px-1 text-xs text-ink-300">
-              {graph ? `${graph.nodes.length} 个对象 · ${graph.edges.length} 条关系` : "选择左侧对象开始探索"}
+              {graph ? `${graph.nodes.length} 个对象 · ${graph.edges.length} 条关系` : "加载对象关系中"}
             </span>
           </div>
           {loading && <div className="absolute inset-x-0 top-0 z-20 h-0.5 animate-pulse bg-accent-500" />}
           {graph?.truncated && (
-            <div className="absolute right-3 top-3 z-10 rounded-md bg-amber-100 px-3 py-1.5 text-xs text-amber-700">关系较多，当前仅显示前 100 个对象</div>
+            <div className="absolute right-3 top-3 z-10 rounded-md bg-amber-100 px-3 py-1.5 text-xs text-amber-700">对象较多，已按当前视图上限截断</div>
           )}
           {!graph ? (
             <div className="grid h-full place-items-center">
@@ -171,7 +216,7 @@ function ObjectsView() {
             </div>
           ) : (
             <GraphCanvas
-              key={`${graph.center}-${depth}-${graph.nodes.length}`}
+              key={`${mode}-${graph.center ?? "all"}-${depth}-${graph.nodes.length}-${graph.edges.length}`}
               initialNodes={flow.nodes}
               initialEdges={flow.edges}
               onNodeClick={selectNode}
@@ -182,7 +227,7 @@ function ObjectsView() {
         </main>
 
         <aside className="w-[350px] shrink-0 overflow-y-auto border-l border-surface-300 bg-surface-0 p-5">
-          {!detail ? <p className="pt-10 text-center text-sm text-ink-300">点击图中节点查看属性、关系和证据</p> : <ObjectDetailPane detail={detail} onExplore={(id) => explore(id)} />}
+          {!detail ? <p className="pt-10 text-center text-sm text-ink-300">全局图已展示全部对象；点击任一节点查看属性、关系和证据</p> : <ObjectDetailPane detail={detail} onExplore={(id) => explore(id, depth)} />}
         </aside>
       </div>
     </>
@@ -227,41 +272,67 @@ function GraphCanvas({
 
 function graphToFlow(graph: OntGraph | null, types: OntologyType[]): { nodes: Node[]; edges: Edge[] } {
   if (!graph) return { nodes: [], edges: [] };
-  const adjacency = new Map<string, Set<string>>();
-  for (const edge of graph.edges) {
-    if (!adjacency.has(edge.from_id)) adjacency.set(edge.from_id, new Set());
-    if (!adjacency.has(edge.to_id)) adjacency.set(edge.to_id, new Set());
-    adjacency.get(edge.from_id)!.add(edge.to_id);
-    adjacency.get(edge.to_id)!.add(edge.from_id);
-  }
-  const levels = new Map<string, number>([[graph.center, 0]]);
-  const queue = [graph.center];
-  while (queue.length) {
-    const id = queue.shift()!;
-    for (const next of adjacency.get(id) ?? []) {
-      if (!levels.has(next)) {
-        levels.set(next, (levels.get(id) ?? 0) + 1);
-        queue.push(next);
+  const positions = new Map<string, { x: number; y: number }>();
+  if (graph.center) {
+    const adjacency = new Map<string, Set<string>>();
+    for (const edge of graph.edges) {
+      if (!adjacency.has(edge.from_id)) adjacency.set(edge.from_id, new Set());
+      if (!adjacency.has(edge.to_id)) adjacency.set(edge.to_id, new Set());
+      adjacency.get(edge.from_id)!.add(edge.to_id);
+      adjacency.get(edge.to_id)!.add(edge.from_id);
+    }
+    const levels = new Map<string, number>([[graph.center, 0]]);
+    const queue = [graph.center];
+    while (queue.length) {
+      const id = queue.shift()!;
+      for (const next of adjacency.get(id) ?? []) {
+        if (!levels.has(next)) {
+          levels.set(next, (levels.get(id) ?? 0) + 1);
+          queue.push(next);
+        }
       }
     }
+    const rings = new Map<number, OntObject[]>();
+    for (const object of graph.nodes) {
+      const level = levels.get(object.id) ?? 2;
+      if (!rings.has(level)) rings.set(level, []);
+      rings.get(level)!.push(object);
+    }
+    for (const [level, objects] of rings) {
+      const radius = level === 0 ? 0 : level * 290;
+      objects.forEach((object, index) => {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * index) / Math.max(objects.length, 1);
+        positions.set(object.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+      });
+    }
+  } else {
+    // 全局图按对象类型形成清晰的语义分区；同类型对象按网格排列，避免随机布局每次跳动。
+    const groups = new Map<string, OntObject[]>();
+    for (const object of graph.nodes) {
+      if (!groups.has(object.object_type)) groups.set(object.object_type, []);
+      groups.get(object.object_type)!.push(object);
+    }
+    const ordered = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+    let xOffset = 0;
+    ordered.forEach(([, objects]) => {
+      const itemColumns = Math.max(1, Math.ceil(Math.sqrt(objects.length)));
+      objects.forEach((object, index) => {
+        positions.set(object.id, {
+          x: xOffset + (index % itemColumns) * 250,
+          y: Math.floor(index / itemColumns) * 125,
+        });
+      });
+      xOffset += itemColumns * 250 + 300;
+    });
   }
-  const rings = new Map<number, OntObject[]>();
-  for (const object of graph.nodes) {
-    const level = levels.get(object.id) ?? 2;
-    if (!rings.has(level)) rings.set(level, []);
-    rings.get(level)!.push(object);
-  }
-  const nodes: Node[] = [];
-  for (const [level, objects] of rings) {
-    const radius = level === 0 ? 0 : level * 290;
-    objects.forEach((object, index) => {
-      const angle = -Math.PI / 2 + (Math.PI * 2 * index) / Math.max(objects.length, 1);
-      const meta = TYPE_META[object.object_type] ?? FALLBACK;
-      const title = types.find((item) => item.name === object.object_type)?.title ?? object.object_type;
-      const center = object.id === graph.center;
-      nodes.push({
+
+  const nodes: Node[] = graph.nodes.map((object) => {
+    const meta = TYPE_META[object.object_type] ?? FALLBACK;
+    const title = types.find((item) => item.name === object.object_type)?.title ?? object.object_type;
+    const center = object.id === graph.center;
+    return {
         id: object.id,
-        position: { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius },
+        position: positions.get(object.id) ?? { x: 0, y: 0 },
         data: {
           label: (
             <div className="flex items-center gap-2 text-left">
@@ -282,14 +353,13 @@ function graphToFlow(graph: OntGraph | null, types: OntologyType[]): { nodes: No
           background: "rgba(255,255,255,.96)",
           boxShadow: center ? `0 0 0 5px ${meta.soft}, 0 12px 30px rgba(15,23,42,.13)` : "0 7px 20px rgba(15,23,42,.09)",
         },
-      });
-    });
-  }
+      };
+  });
   const edges = graph.edges.map((edge, index) => ({
     id: `${edge.link_type}-${edge.from_id}-${edge.to_id}-${edge.document_id}-${index}`,
     source: edge.from_id,
     target: edge.to_id,
-    label: edge.link_title || edge.link_type,
+    label: `${edge.link_title || edge.link_type}${(edge.source_count ?? 1) > 1 ? ` ×${edge.source_count}` : ""}`,
     type: "smoothstep",
     markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "#94a3b8" },
     style: { stroke: "#94a3b8", strokeWidth: 1.4 },
