@@ -45,14 +45,18 @@ func TestNormalize(t *testing.T) {
 		{Name: "date", Label: "日期", Type: "date"},
 		{Name: "title", Label: "标题"},
 	}}
+	evidence := &model.FieldEvidence{RawText: "价税合计 ¥128,000.00", Page: 1, ValueSource: "document"}
 	out := Normalize([]model.Field{
-		{Name: "amount", Value: "128,000.00"},
+		{Name: "amount", Value: "128,000.00", Confidence: 0.96, Evidence: evidence},
 		{Name: "date", Value: "2026年7月1日"},
 		{Name: "title", Value: " 保持原样 "},
 		{Name: "unknown", Value: "1,000"},
 	}, dt)
 	if out[0].Value != "128000" {
 		t.Errorf("金额归一化 = %q", out[0].Value)
+	}
+	if out[0].Evidence != evidence || out[0].Evidence.RawText != "价税合计 ¥128,000.00" {
+		t.Error("数值归一化不应丢失字段证据")
 	}
 	if out[1].Value != "2026-07-01" {
 		t.Errorf("日期归一化 = %q", out[1].Value)

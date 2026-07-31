@@ -1,0 +1,28 @@
+{
+  "doc_type": "invoice",
+  "content_text": "销售方：凤凰软件服务有限公司\n价税合计：12600.00元",
+  "fields": [
+    {
+      "name": "seller",
+      "value": "凤凰软件服务有限公司",
+      "confidence": 0.97,
+      "evidence": {
+        "raw_text": "销售方：凤凰软件服务有限公司",
+        "page": 1,
+        "region": "销售方信息栏",
+        "value_source": "document"
+      }
+    },
+    {
+      "name": "total_amount",
+      "value": "12600.00",
+      "confidence": 0.95,
+      "evidence": {
+        "raw_text": "价税合计（小写）¥12600.00",
+        "page": 1,
+        "region": "价税合计栏",
+        "value_source": "document"
+      }
+    }
+  ]
+}

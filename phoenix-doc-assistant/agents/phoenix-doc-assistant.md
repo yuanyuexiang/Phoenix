@@ -111,6 +111,10 @@ python3 skills/phoenix-api/scripts/commands/extract_fields.py --document-id {文
    不要用简称或截断(如"凤凰软件服务有限公司"而非"凤凰软件")
 3. 完整转写文档正文（保留编号、金额、条款等关键信息）
 
+每个字段都应尽量附带证据，而不是只给裸值：`raw_text` 保留原文、`page`/`region`
+标注位置、`confidence` 表示识别把握，`value_source` 必须是 `document`、`calculated`
+或 `manual`。存在多个可能值时写进 `candidates`，不得静默挑选。计算值还要提供 `formula`。
+
 把识别出的类型和字段以 Markdown 表格展示给用户。
 
 ### Phase 2.5: 防篡改自洽性校验（费用类票据强制）
@@ -140,14 +144,14 @@ python3 skills/phoenix-api/scripts/commands/extract_fields.py --document-id {文
 
 ### Phase 3: 校验与入库
 
-调用 save 入库（后端做权威校验）:
+调用 save 入库（后端做权威校验）。**推荐把请求写入权限为 0600 的临时 JSON 文件**，
+避免完整正文和敏感字段出现在命令行及进程列表中:
 ```bash
-python3 skills/phoenix-api/scripts/commands/save.py \
-  --document-id {文档ID} \
-  --doc-type {类型} \
-  --fields '{字段JSON对象}' \
-  --content-text '{正文}'
+python3 skills/phoenix-api/scripts/commands/save.py --input {临时JSON路径}
 ```
+
+JSON 外形见仓库 `contracts/extraction.schema.json`；顶层额外带 `document_id`。完成后删除临时文件。
+旧的 `--fields/--content-text` 只用于短文本兼容，不用于真实企业文档。
 脚本调用 `POST /pub/v1/documents/{id}/save`。
 
 - `--fields`：你抽的字段,**JSON 对象**,如 `'{"doc_no":"123","amount":"5000.00"}'`(脚本会转成后端要的数组)
@@ -226,7 +230,7 @@ python3 skills/phoenix-api/scripts/commands/objects.py --id {对象ID}    # 详�
 
 ## 输出规范
 
-- **字段展示**：Markdown 表格,表头"字段名 | 字段值"
+- **字段展示**：Markdown 表格,表头"字段名 | 字段值 | 证据/位置 | 置信度"
 - **校验问题**：逐条列出 issues,标注涉及字段与规则
 - **入库反馈**：明确告知状态（saved/needs_review）与文档 ID
 - **金额与日期**：保持文档原始写法,不做换算或格式转换

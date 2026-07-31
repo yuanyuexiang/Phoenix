@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/yuanyuexiang/phoenix/internal/model"
 	"github.com/yuanyuexiang/phoenix/internal/schema"
@@ -40,6 +41,21 @@ func Run(fields []model.Field, dt *schema.DocType, minConfidence float64) (model
 		// 仅当客户端明确回传了置信度才按阈值卡。
 		if f.Confidence > 0 && f.Confidence < minConfidence {
 			issues = append(issues, issue(spec, "confidence", fmt.Sprintf("置信度 %.2f 低于阈值 %.2f", f.Confidence, minConfidence)))
+		}
+		if f.Confidence < 0 || f.Confidence > 1 {
+			issues = append(issues, issue(spec, "confidence", "置信度必须在 0 到 1 之间"))
+		}
+		if f.Evidence != nil {
+			source := f.Evidence.ValueSource
+			if source != "" && source != "document" && source != "calculated" && source != "manual" {
+				issues = append(issues, issue(spec, "evidence", fmt.Sprintf("未知的证据来源 %q", source)))
+			}
+			if source == "calculated" && strings.TrimSpace(f.Evidence.Formula) == "" {
+				issues = append(issues, issue(spec, "evidence", "计算值必须提供 formula"))
+			}
+			if len(f.Evidence.Candidates) > 1 {
+				issues = append(issues, issue(spec, "ambiguity", fmt.Sprintf("存在 %d 个候选值,需要人工确认", len(f.Evidence.Candidates))))
+			}
 		}
 	}
 

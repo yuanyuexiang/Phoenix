@@ -3,7 +3,18 @@
 export interface Field {
   name: string;
   value: string;
-  confidence: number;
+  confidence?: number;
+  evidence?: FieldEvidence;
+}
+
+export interface FieldEvidence {
+  raw_text?: string;
+  page?: number;
+  region?: string;
+  value_source?: "document" | "calculated" | "manual";
+  formula?: string;
+  notes?: string;
+  candidates?: { value: string; confidence?: number; raw_text?: string }[];
 }
 
 export interface Issue {

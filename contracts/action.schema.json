@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phoenix.local/contracts/action.schema.json",
+  "title": "Phoenix action preview/result",
+  "type": "object",
+  "required": ["action", "status"],
+  "properties": {
+    "action": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["preview", "executed", "rejected"] },
+    "requires_confirmation": { "type": "boolean" },
+    "summary": { "type": "string" },
+    "affected_objects": { "type": "array", "items": { "type": "string" } },
+    "affected_cases": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "idempotency_key": { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -116,7 +116,18 @@ function ReviewView() {
   const reviewedFields = (): Field[] =>
     (current?.fields ?? []).map((f) => {
       const v = edited[f.name];
-      return v === undefined || v === f.value ? f : { name: f.name, value: v, confidence: 1.0 };
+      return v === undefined || v === f.value
+        ? f
+        : {
+            ...f,
+            value: v,
+            confidence: undefined,
+            evidence: {
+              ...f.evidence,
+              value_source: "manual" as const,
+              notes: f.evidence?.notes || "管理后台人工修正",
+            },
+          };
     });
 
   const act = async (fn: () => Promise<Doc>, tip: string) => {
@@ -239,7 +250,7 @@ function ReviewView() {
                   <tr className="text-left text-xs text-ink-300">
                     <th className="w-[190px] px-4 py-2.5 font-medium">字段</th>
                     <th className="px-4 py-2.5 font-medium">值(可修改)</th>
-                    <th className="w-[80px] px-4 py-2.5 font-medium">置信度</th>
+                    <th className="w-[170px] px-4 py-2.5 font-medium">证据</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -263,7 +274,30 @@ function ReviewView() {
                           onChange={(e) => setEdited((m) => ({ ...m, [f.name]: e.target.value }))}
                         />
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-ink-300">{(f.confidence ?? 0).toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-xs text-ink-300">
+                        <span className="block">
+                          {f.evidence?.value_source === "manual"
+                            ? "人工修正"
+                            : f.evidence?.value_source === "calculated"
+                              ? "计算得出"
+                              : f.evidence
+                                ? "原文提取"
+                                : "未提供"}
+                          {f.confidence ? ` · ${(f.confidence * 100).toFixed(0)}%` : ""}
+                        </span>
+                        {f.evidence?.raw_text && (
+                          <span className="mt-0.5 block max-w-[220px] truncate" title={f.evidence.raw_text}>
+                            “{f.evidence.raw_text}”
+                          </span>
+                        )}
+                        {(f.evidence?.page || f.evidence?.region) && (
+                          <span className="block text-[11px]">
+                            {f.evidence.page ? `第${f.evidence.page}页` : ""}
+                            {f.evidence.page && f.evidence.region ? " · " : ""}
+                            {f.evidence.region}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

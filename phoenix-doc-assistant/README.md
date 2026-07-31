@@ -43,6 +43,7 @@ phoenix-doc-assistant/
 │   │   ├── config.py                    # 配置文件读写/脱敏
 │   │   ├── auth.py                      # 弹浏览器登录(授权码+PKCE) + token 自动续期
 │   │   ├── api_client.py                # REST 客户端(自动带 Bearer)
+│   │   ├── request_input.py             # 从 0600 JSON 文件/stdin 安全读取长正文与证据
 │   │   ├── setup.py                     # 端点配置向导(手动终端用)
 │   │   └── commands/                    # upload/extract_fields/validate/save/query/ask
 │   ├── references/                      # phoenix-api-docs.md / doc-type-fields.md

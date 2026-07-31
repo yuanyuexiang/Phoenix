@@ -64,6 +64,20 @@ description: Built-in Python REST client for the document backend (/pub/v1), aut
 单据检索 → query.py;**实体/关系/聚合 → objects.py**;开放式正文理解 → ask.py。
 对象的合并/修正不由脚本执行(引导管理后台)。
 
+## 证据化字段与安全输入
+
+真实文档保存和预校验优先使用 `save.py --input request.json`、
+`validate.py --input request.json`。字段可使用证据化外形：
+
+```json
+{"seller":{"value":"凤凰软件服务有限公司","confidence":0.97,
+ "evidence":{"raw_text":"销售方：凤凰软件服务有限公司","page":1,
+ "region":"销售方信息栏","value_source":"document"}}}
+```
+
+`value_source` 只能是 `document/calculated/manual`；计算值提供 `formula`，歧义值保留
+`candidates`。临时请求文件权限应为 0600，用后删除，避免正文进入 shell 历史或进程列表。
+
 ## 新增业务命令
 
 1. 在 `scripts/commands/` 下新建 `xxx.py`

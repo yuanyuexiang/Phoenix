@@ -27,9 +27,30 @@ const (
 // Field 是从文档中提取出的一个字段。
 // Confidence 可选:WorkBuddy 回传字段时通常不带自评置信度(缺省为 0,校验时跳过该维度)。
 type Field struct {
-	Name       string  `json:"name"`
+	Name       string         `json:"name"`
+	Value      string         `json:"value"`
+	Confidence float64        `json:"confidence,omitempty"`
+	Evidence   *FieldEvidence `json:"evidence,omitempty"`
+}
+
+// FieldEvidence 记录字段值为什么可信。它随 Field 一同保存在 documents.fields JSONB 中，
+// 让 WorkBuddy、审核台和本体物化共享同一份原始证据。ValueSource 区分原文提取、
+// 确定性计算和人工修正，避免把推导值伪装成文档原文。
+type FieldEvidence struct {
+	RawText     string           `json:"raw_text,omitempty"`
+	Page        int              `json:"page,omitempty"`
+	Region      string           `json:"region,omitempty"`
+	ValueSource string           `json:"value_source,omitempty"` // document | calculated | manual
+	Formula     string           `json:"formula,omitempty"`
+	Notes       string           `json:"notes,omitempty"`
+	Candidates  []FieldCandidate `json:"candidates,omitempty"`
+}
+
+// FieldCandidate 是无法唯一判定字段值时保留的候选，不允许客户端静默丢弃歧义。
+type FieldCandidate struct {
 	Value      string  `json:"value"`
 	Confidence float64 `json:"confidence,omitempty"`
+	RawText    string  `json:"raw_text,omitempty"`
 }
 
 // ValidationIssue 是规则校验发现的一个问题。

@@ -90,4 +90,15 @@ def to_field_array(obj):
     避免用假的 1.0 冒充置信度)。已是数组则原样返回。"""
     if isinstance(obj, list):
         return obj
-    return [{"name": k, "value": "" if v is None else str(v)} for k, v in obj.items()]
+    out = []
+    for name, value in obj.items():
+        # 简写仍支持 {"amount":"5000"};证据化写法支持
+        # {"amount":{"value":"5000","confidence":0.96,"evidence":{...}}}。
+        if isinstance(value, dict) and "value" in value:
+            field = dict(value)
+            field["name"] = name
+            field["value"] = "" if field["value"] is None else str(field["value"])
+            out.append(field)
+        else:
+            out.append({"name": name, "value": "" if value is None else str(value)})
+    return out
