@@ -24,10 +24,14 @@ token 存本地 .config.json(0600,仅本人可读);之后每次调用自动续�
 import base64
 import getpass
 import hashlib
+import html
 import http.server
 import json
 import os
+import platform
 import secrets
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -123,6 +127,13 @@ if(s){
 setTimeout(function(){try{window.close()}catch(e){}},600)
 </script></body></html>"""
 
+_FAILED_HTML = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>登录未完成</title><style>
+body{min-height:96vh;display:grid;place-items:center;font-family:-apple-system,"PingFang SC",sans-serif;background:#F6F8FB;color:#2B3A52}
+.box{text-align:center;max-width:520px}.bad{font-size:40px;color:#DC2626}p{font-size:16px}small{color:#8B98AC;line-height:1.8}
+</style></head><body><div class="box"><div class="bad">×</div><p>登录未完成</p>
+<small>__ERROR__<br>请返回 WorkBuddy 后重新登录。</small></div></body></html>"""
+
 
 def _success_html(cfg):
     scheme = (cfg.get('return_scheme') if cfg else None)
@@ -131,10 +142,33 @@ def _success_html(cfg):
     return _SUCCESS_HTML.replace('__SCHEME__', scheme)
 
 
+def _activate_workbuddy(cfg):
+    """Token 落盘后主动把 WorkBuddy 切到前台；URL scheme 同时用于跨平台唤起。"""
+    scheme = (cfg or {}).get('return_scheme') or 'workbuddy://'
+    if not scheme.lower().startswith('workbuddy:'):
+        return False
+    try:
+        system = platform.system()
+        if system == 'Darwin':
+            subprocess.Popen(['open', scheme], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif system == 'Windows':
+            os.startfile(scheme)  # type: ignore[attr-defined]
+        else:
+            opener = shutil.which('xdg-open')
+            if not opener:
+                return False
+            subprocess.Popen([opener, scheme], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
     result = {}
     done = threading.Event()
     success_html = _SUCCESS_HTML  # browser_login 启动前按配置渲染(return_scheme)
+    token_ready = threading.Event()  # 主线程完成授权码兑换和 token 落盘后才展示成功
+    token_error = ''
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
@@ -144,11 +178,14 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
             return
         q = urllib.parse.parse_qs(u.query)
         _CallbackHandler.result = {'code': (q.get('code') or [''])[0], 'state': (q.get('state') or [''])[0]}
+        _CallbackHandler.done.set()
+        ready = _CallbackHandler.token_ready.wait(timeout=65)
+        error = _CallbackHandler.token_error if ready else 'Token 兑换超时'
+        page = (_FAILED_HTML.replace('__ERROR__', html.escape(error)) if error else _CallbackHandler.success_html)
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.end_headers()
-        self.wfile.write(_CallbackHandler.success_html.encode('utf-8'))
-        _CallbackHandler.done.set()
+        self.wfile.write(page.encode('utf-8'))
 
     def log_message(self, *args):  # 静默访问日志
         pass
@@ -164,6 +201,8 @@ def browser_login(wait_seconds=_DEFAULT_WAIT):
 
     _CallbackHandler.result = {}
     _CallbackHandler.done.clear()
+    _CallbackHandler.token_ready.clear()
+    _CallbackHandler.token_error = ''
     _CallbackHandler.success_html = _success_html(cfg)
     try:
         srv = http.server.HTTPServer(('127.0.0.1', _PREFERRED_PORT), _CallbackHandler)
@@ -186,19 +225,23 @@ def browser_login(wait_seconds=_DEFAULT_WAIT):
         if not _CallbackHandler.done.wait(timeout=wait_seconds):
             raise AuthError(f"等待浏览器登录超时({wait_seconds}s),请重试 --login")
         res = _CallbackHandler.result
+        if res.get('state') != state:
+            raise AuthError("state 不匹配,已丢弃本次回调(可能被篡改),请重试 --login")
+        if not res.get('code'):
+            raise AuthError("回调缺少授权码,请重试 --login")
+
+        resp = _post_json(cfg, '/pub/v1/auth/token', {
+            'grant_type': 'authorization_code', 'code': res['code'], 'code_verifier': verifier,
+        })
+        _store_tokens(resp)
+        _activate_workbuddy(cfg)
+        return (resp.get('user') or {}).get('username', '')
+    except (NeedsLogin, AuthError) as exc:
+        _CallbackHandler.token_error = str(exc)
+        raise
     finally:
+        _CallbackHandler.token_ready.set()
         srv.shutdown()
-
-    if res.get('state') != state:
-        raise AuthError("state 不匹配,已丢弃本次回调(可能被篡改),请重试 --login")
-    if not res.get('code'):
-        raise AuthError("回调缺少授权码,请重试 --login")
-
-    resp = _post_json(cfg, '/pub/v1/auth/token', {
-        'grant_type': 'authorization_code', 'code': res['code'], 'code_verifier': verifier,
-    })
-    _store_tokens(resp)
-    return (resp.get('user') or {}).get('username', '')
 
 
 """---------------- 口令登录(终端后备)与 token 维护 ----------------"""

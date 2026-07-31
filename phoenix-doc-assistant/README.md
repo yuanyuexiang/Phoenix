@@ -1,5 +1,7 @@
 # Phoenix 文档助手（phoenix-doc-assistant）
 
+当前专家包版本：**2.0.1**。此版本修复浏览器登录成功后未自动切回 WorkBuddy 的问题。
+
 企业智能文档处理专家包,平台唯一的 WorkBuddy 接入形态。内置 Python 脚本直连后端
 REST(`/pub/v1`),**每个操作追溯到具体员工**:员工用本人账号口令登录,平台签发
 token 并自动续期(V1.3 起为自研账号体系,不再依赖 Keycloak)。
@@ -17,7 +19,8 @@ token 并自动续期(V1.3 起为自研账号体系,不再依赖 Keycloak)。
 
 - **弹浏览器登录**:`auth.py --login` → 弹出 Phoenix 平台登录页(授权码 + PKCE,
   登录页由平台自己出,无第三方身份组件)→ 员工在页面输入账号口令 → 成功页提示返回
-  WorkBuddy(浏览器允许时自动关闭),脚本经本机回调拿到 access_token(短期)+ refresh_token(长期),
+  WorkBuddy；Token 成功落盘后脚本通过 `workbuddy://` 主动把 WorkBuddy 切回前台，浏览器页保留
+  “返回 WorkBuddy”按钮作为兜底。脚本经本机回调拿到 access_token(短期)+ refresh_token(长期),
   存本地 `.config.json`(0600)。
 - 无浏览器环境的后备:`auth.py --login --password` 终端交互输入(getpass 不回显)。
 - 之后 refresh_token 自动续期;`auth.py --logout` 切换账号。

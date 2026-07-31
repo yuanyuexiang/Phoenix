@@ -48,6 +48,8 @@ python3 skills/phoenix-api/scripts/auth.py --check
 python3 skills/phoenix-api/scripts/auth.py --login
 ```
 它会**自动弹出本机浏览器**到 Phoenix 平台登录页,员工在页面输入账号口令,成功页提示返回 WorkBuddy(浏览器允许时自动关闭,否则手动关闭标签页即可),脚本拿到 token。
+- Token 落盘后脚本会通过 `workbuddy://` 主动将 WorkBuddy 切回前台；若系统或浏览器拦截，
+  成功页会显示“返回 WorkBuddy”按钮作为兜底。
 - 告诉用户:"已打开浏览器,请用你的员工账号登录"。
 - 若浏览器没弹出:命令的 stderr 会打印一行 `[auth] ... 请手动访问登录: <URL>`,把这个链接发给用户手动打开。
 - 输出 `AUTHORIZED user=xxx` → 告知"已登录为 xxx",继续业务。

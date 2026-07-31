@@ -26,11 +26,11 @@ DEFAULT_CONFIG = {
 
 
 def load_config():
-    """读取配置,不存在则返回 None。"""
+    """读取配置并补齐新版默认项；旧专家包配置无需重新安装即可获得 return_scheme。"""
     if not os.path.exists(CONFIG_FILE):
         return None
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        return {**DEFAULT_CONFIG, **json.load(f)}
 
 
 def save_config(config):

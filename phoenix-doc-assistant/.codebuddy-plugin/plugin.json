@@ -1,6 +1,6 @@
 {
   "name": "phoenix-doc-assistant",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Phoenix document assistant with built-in REST API client (Plan A - Option A, pure REST, no MCP)",
   "author": {
     "name": "WorkBuddy",
