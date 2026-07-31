@@ -73,6 +73,9 @@ Next.js 16 + React 19 + Tailwind v4 · Docker · 识别/提取:WorkBuddy 多模�
 产品以 WorkBuddy 中的**「文档处理专家」**作为客户使用入口(交付形态);专家包
 `phoenix-doc-assistant` 内置脚本调用平台**员工级 REST API**完成自动化文档处理:
 
+企业管理员发布与员工使用步骤见
+[WorkBuddy 企业专家上传与使用指南](docs/WorkBuddy企业专家上传与使用指南.md)。
+
 | 端点 | 作用 |
 |------|------|
 | `GET /pub/v1/me` | 员工身份自省 |
@@ -114,4 +117,3 @@ make smoke          # 另开终端:端到端冒烟(走管理面 /api 跑通全�
 - 单据类型与提取字段在 `backend/configs/doctypes/*.yaml` 中配置,新增单据类型无需改代码。
 - 知识库问答需配置 embedding 端点(`PHX_EMBED_ENDPOINT` 等,OpenAI 兼容均可);不配则知识库关闭。
 - 本机宿主端口整体错开避免冲突:各服务端口见上方架构表。
-
