@@ -126,6 +126,45 @@ export interface Component {
   error?: string;
 }
 
+export interface DashboardData {
+  range_days: number;
+  summary: {
+    uploaded: number;
+    saved: number;
+    needs_review: number;
+    failed: number;
+    save_rate: number;
+    objects_changed: number;
+    objects_total: number;
+  };
+  trends: { date: string; uploaded: number; saved: number; needs_review: number; failed: number }[];
+  doctype_stats: {
+    doc_type: string;
+    total: number;
+    saved: number;
+    needs_review: number;
+    failed: number;
+    save_rate: number;
+  }[];
+  work_items: {
+    id: string;
+    filename: string;
+    doc_type: string;
+    status: string;
+    uploaded_by: string;
+    issue: string;
+    created_at: string;
+  }[];
+  recent_activity: {
+    id: number;
+    action: string;
+    actor: string;
+    document_id?: string;
+    filename?: string;
+    occurred_at: string;
+  }[];
+}
+
 /** 员工账号(/pub/v1 登录凭证来源,管理见「员工」页)。 */
 export interface AppUser {
   id: number;

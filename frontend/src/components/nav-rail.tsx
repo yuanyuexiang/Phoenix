@@ -21,6 +21,15 @@ const DocsIcon = (
   </svg>
 );
 
+const DashboardIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="3.5" width="7" height="4.5" rx="1.5" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="10.5" width="7" height="10" rx="1.5" />
+  </svg>
+);
+
 const ReviewIcon = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5">
     <circle cx="10.5" cy="10.5" r="6.5" />
@@ -60,7 +69,8 @@ const ObjectsIcon = (
 );
 
 const ITEMS: RailItemDef[] = [
-  { href: "/", label: "文档", icon: DocsIcon, exact: true },
+  { href: "/", label: "工作台", icon: DashboardIcon, exact: true },
+  { href: "/documents", label: "文档", icon: DocsIcon },
   { href: "/review", label: "审核", icon: ReviewIcon },
   { href: "/objects", label: "对象", icon: ObjectsIcon },
   { href: "/doctypes", label: "单据类型", icon: SchemaIcon },
@@ -74,7 +84,7 @@ export function NavRail() {
   return (
     <nav className="flex w-[76px] shrink-0 flex-col items-center border-r border-surface-300 bg-surface-0 py-4">
       {/* Phoenix 印记 */}
-      <Link href="/" title="Phoenix" className="relative mb-6 flex h-11 w-11 items-center justify-center no-underline">
+      <Link href="/" title="Phoenix 工作台" className="relative mb-4 flex h-11 w-11 items-center justify-center no-underline">
         <span className="absolute inset-0 rounded-full border border-accent-500/50" />
         <span className="absolute inset-[5px] rounded-full border border-accent-500/25" />
         <span className="text-lg font-semibold text-accent-500">凤</span>

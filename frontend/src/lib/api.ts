@@ -1,7 +1,7 @@
 // workflow REST API 调用封装。开发期经 next dev rewrites、生产经 nginx 反代到 workflow。
 // 所有请求自动携带访问密钥;收到 401 时清掉本地密钥并跳回登录页。
 import { authHeaders, clearAccessKey } from "./auth";
-import type { AppUser, Component, Doc, DocType, Field, ObjectDetail, OntGraph, OntObject, OntologyType, QueryResult } from "./types";
+import type { AppUser, Component, DashboardData, Doc, DocType, Field, ObjectDetail, OntGraph, OntObject, OntologyType, QueryResult } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, {
@@ -46,6 +46,9 @@ export const deleteDocument = (id: string) =>
   request<{ ok: boolean }>(`/api/documents/${id}`, { method: "DELETE" });
 
 export const fetchStatus = () => request<{ components: Component[] }>("/api/status");
+
+export const fetchDashboard = (range: "7d" | "30d") =>
+  request<DashboardData>(`/api/dashboard?${new URLSearchParams({ range })}`);
 
 /** 归档原件(审核台预览):带鉴权头取回,返回 blob 对象 URL(调用方负责 revokeObjectURL)。 */
 export const fetchDocumentFile = async (id: string): Promise<{ url: string; contentType: string }> => {

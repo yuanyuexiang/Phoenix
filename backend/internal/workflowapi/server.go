@@ -79,6 +79,7 @@ func NewHandler(opts Options) http.Handler {
 	mux.HandleFunc("POST /api/ask", s.ask)
 	mux.HandleFunc("GET /api/doctypes", s.doctypes)
 	mux.HandleFunc("GET /api/status", s.status)
+	mux.HandleFunc("GET /api/dashboard", s.dashboard)
 	mux.HandleFunc("GET /api/ontology/types", s.ontologyTypes)
 	mux.HandleFunc("GET /api/objects", s.objectsList)
 	mux.HandleFunc("GET /api/objects/{id}", s.objectGet)
@@ -114,6 +115,19 @@ func NewHandler(opts Options) http.Handler {
 
 type server struct {
 	opts Options
+}
+
+func (s *server) dashboard(w http.ResponseWriter, r *http.Request) {
+	days := 7
+	if r.URL.Query().Get("range") == "30d" {
+		days = 30
+	}
+	result, err := s.opts.DB.DashboardStats(r.Context(), days)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "读取工作台统计失败: "+err.Error())
+		return
+	}
+	writeJSON(w, result)
 }
 
 /* ---------- 鉴权 ---------- */
