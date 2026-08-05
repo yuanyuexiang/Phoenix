@@ -27,12 +27,12 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function PageHeader({ title, desc, extra }: { title: string; desc?: string; extra?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between border-b border-surface-300 bg-surface-0 px-6 py-4">
-      <div>
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-surface-300 bg-surface-0 px-4 py-3 sm:px-6 sm:py-4">
+      <div className="min-w-0">
         <h1 className="text-base font-semibold text-ink-900">{title}</h1>
-        {desc && <p className="mt-0.5 text-xs text-ink-300">{desc}</p>}
+        {desc && <p className="mt-0.5 max-w-4xl text-xs leading-5 text-ink-300">{desc}</p>}
       </div>
-      {extra}
+      {extra && <div className="shrink-0">{extra}</div>}
     </div>
   );
 }

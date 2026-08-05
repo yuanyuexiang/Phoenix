@@ -134,7 +134,7 @@ function ObjectsView() {
     <>
       <PageHeader title="对象关系" desc="默认纵览全部业务对象及其连接，也可聚焦任一对象进行一跳或两跳调查" />
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="flex w-[250px] shrink-0 flex-col border-r border-surface-300 bg-surface-0">
+        <aside className="flex w-[220px] shrink-0 flex-col border-r border-surface-300 bg-surface-0 2xl:w-[250px]">
           <div className="space-y-2 border-b border-surface-300 p-3">
             <input
               className={`${inputCls} w-full`}
@@ -180,7 +180,7 @@ function ObjectsView() {
         </aside>
 
         <main className="relative min-w-0 flex-1 bg-surface-100">
-          <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-lg border border-surface-300 bg-surface-0/95 p-1.5 shadow-card backdrop-blur">
+          <div className="absolute inset-x-3 top-3 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-surface-300 bg-surface-0/95 p-1.5 shadow-card backdrop-blur xl:right-auto">
             <button className={mode === "global" ? btnCls + " bg-accent-100 text-accent-700" : btnCls} onClick={() => loadGlobal(type, keyword, includeIsolated)}>全局关系图</button>
             <span className="h-5 w-px bg-surface-300" />
             <button disabled={!focusID} className={mode === "focus" && depth === 1 ? btnCls + " bg-accent-100 text-accent-700" : btnCls} onClick={() => changeDepth(1)}>中心一跳</button>
@@ -226,7 +226,7 @@ function ObjectsView() {
           <GraphLegend types={types} />
         </main>
 
-        <aside className="w-[350px] shrink-0 overflow-y-auto border-l border-surface-300 bg-surface-0 p-5">
+        <aside className="w-[300px] shrink-0 overflow-y-auto border-l border-surface-300 bg-surface-0 p-4 2xl:w-[350px] 2xl:p-5">
           {!detail ? <p className="pt-10 text-center text-sm text-ink-300">全局图已展示全部对象；点击任一节点查看属性、关系和证据</p> : <ObjectDetailPane detail={detail} onExplore={(id) => explore(id, depth)} />}
         </aside>
       </div>
@@ -256,8 +256,8 @@ function GraphCanvas({
       onNodeClick={onNodeClick}
       onNodeDoubleClick={onNodeDoubleClick}
       fitView
-      fitViewOptions={{ padding: 0.2 }}
-      minZoom={0.25}
+      fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
+      minZoom={0.35}
       maxZoom={1.8}
       nodesDraggable
       nodesConnectable={false}
@@ -306,23 +306,44 @@ function graphToFlow(graph: OntGraph | null, types: OntologyType[]): { nodes: No
       });
     }
   } else {
-    // 全局图按对象类型形成清晰的语义分区；同类型对象按网格排列，避免随机布局每次跳动。
+    // 全局图按对象类型形成语义分区，并用 shelf packing 自动换行。
+    // 旧实现把所有类型只沿 X 轴依次排开，类型一多画布就会极宽，fitView 只能把
+    // 节点缩成一条难以阅读的细线。这里限制每个分区和整行宽度，使图谱优先利用
+    // 画布的二维空间；位置仍由类型名和对象名决定，刷新时不会随机跳动。
     const groups = new Map<string, OntObject[]>();
     for (const object of graph.nodes) {
       if (!groups.has(object.object_type)) groups.set(object.object_type, []);
       groups.get(object.object_type)!.push(object);
     }
-    const ordered = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-    let xOffset = 0;
+    const ordered = [...groups.entries()]
+      .map(([name, objects]) => [name, [...objects].sort((a, b) => a.display_name.localeCompare(b.display_name))] as const)
+      .sort(([a], [b]) => a.localeCompare(b));
+    const nodeStepX = 250;
+    const nodeStepY = 125;
+    const groupGapX = 80;
+    const groupGapY = 90;
+    const maxRowWidth = 1150;
+    let cursorX = 0;
+    let cursorY = 0;
+    let rowHeight = 0;
     ordered.forEach(([, objects]) => {
-      const itemColumns = Math.max(1, Math.ceil(Math.sqrt(objects.length)));
+      const itemColumns = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(objects.length))));
+      const itemRows = Math.ceil(objects.length / itemColumns);
+      const groupWidth = itemColumns * nodeStepX;
+      const groupHeight = itemRows * nodeStepY;
+      if (cursorX > 0 && cursorX + groupWidth > maxRowWidth) {
+        cursorX = 0;
+        cursorY += rowHeight + groupGapY;
+        rowHeight = 0;
+      }
       objects.forEach((object, index) => {
         positions.set(object.id, {
-          x: xOffset + (index % itemColumns) * 250,
-          y: Math.floor(index / itemColumns) * 125,
+          x: cursorX + (index % itemColumns) * nodeStepX,
+          y: cursorY + Math.floor(index / itemColumns) * nodeStepY,
         });
       });
-      xOffset += itemColumns * 250 + 300;
+      cursorX += groupWidth + groupGapX;
+      rowHeight = Math.max(rowHeight, groupHeight);
     });
   }
 

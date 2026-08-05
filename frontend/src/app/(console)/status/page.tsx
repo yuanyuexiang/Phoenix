@@ -58,7 +58,7 @@ export default function StatusPage() {
           </button>
         }
       />
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         {error && (
           <div className="mb-4 rounded-md border border-red-500/30 bg-red-100 px-4 py-3 text-sm text-red-700">
             workflow 工作流引擎不可达:{error}

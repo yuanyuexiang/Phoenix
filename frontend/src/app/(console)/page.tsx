@@ -55,8 +55,8 @@ function DocumentsView() {
     <>
       <PageHeader title="文档" desc="WorkBuddy 处理的文档记录(上传与识别在 WorkBuddy 侧完成)" />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
-        <div className="rounded-lg border border-surface-300 bg-surface-0 shadow-card">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="overflow-hidden rounded-lg border border-surface-300 bg-surface-0 shadow-card">
           <div className="flex flex-wrap items-center gap-2 border-b border-surface-300 p-3">
             <select
               className={inputCls}
@@ -95,7 +95,8 @@ function DocumentsView() {
             </button>
           </div>
 
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-ink-300">
                 <th className="px-4 py-2.5 font-medium">文件名</th>
@@ -135,6 +136,7 @@ function DocumentsView() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </>

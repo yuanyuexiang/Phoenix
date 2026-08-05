@@ -160,7 +160,7 @@ function ReviewView() {
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* 中列:文档队列 */}
-      <aside className="flex w-[250px] shrink-0 flex-col border-r border-surface-300 bg-surface-0 md:w-[280px]">
+      <aside className="flex w-[230px] shrink-0 flex-col border-r border-surface-300 bg-surface-0 md:w-[260px] 2xl:w-[280px]">
         <div className="border-b border-surface-300 px-4 py-[15px]">
           <h1 className="text-base font-semibold text-ink-900">审核</h1>
           <p className="mt-0.5 text-xs text-ink-300">待人工审核 {pending.length} 件</p>
@@ -178,7 +178,7 @@ function ReviewView() {
             从左侧选择一份文档开始审核
           </div>
         ) : (
-          <div className="flex gap-6 p-6">
+          <div className="flex gap-4 p-4 sm:p-6 2xl:gap-6">
           <div className="min-w-0 max-w-[760px] flex-1">
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <h2 className="text-base font-semibold text-ink-900">{current.filename}</h2>
@@ -244,8 +244,9 @@ function ReviewView() {
               )
             )}
 
-            <div className="rounded-lg border border-surface-300 bg-surface-0 shadow-card">
-              <table className="w-full text-sm">
+            <div className="overflow-hidden rounded-lg border border-surface-300 bg-surface-0 shadow-card">
+              <div className="overflow-x-auto">
+              <table className="min-w-[680px] w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-ink-300">
                     <th className="w-[190px] px-4 py-2.5 font-medium">字段</th>
@@ -302,6 +303,7 @@ function ReviewView() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -343,7 +345,7 @@ function ReviewView() {
           </div>
 
           {/* 原件对照:图片/PDF 内联预览,其余提供下载(核对字段无需切窗口) */}
-          <aside className="hidden w-[44%] min-w-0 shrink-0 lg:block">
+          <aside className="hidden w-[44%] min-w-0 shrink-0 xl:block">
             <div className="sticky top-6">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs font-medium text-ink-300">原件对照</p>

@@ -35,7 +35,7 @@ function UsersInner() {
         title="员工"
         desc="WorkBuddy「文档处理专家」的登录账号;每个操作按账号追溯到人。禁用或重置口令会使该员工的登录立即失效"
       />
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         {error && (
           <div className="mb-4 rounded-md border border-red-500/30 bg-red-100 px-4 py-3 text-sm text-red-700">
             {error}
@@ -44,8 +44,9 @@ function UsersInner() {
 
         <CreateForm onCreated={() => { reload(); toast("员工已创建"); }} />
 
-        <div className="mt-5 rounded-lg border border-surface-300 bg-surface-0 shadow-card">
-          <table className="w-full text-sm">
+        <div className="mt-5 overflow-hidden rounded-lg border border-surface-300 bg-surface-0 shadow-card">
+          <div className="overflow-x-auto">
+          <table className="min-w-[900px] w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-ink-300">
                 <th className="px-5 py-2.5 font-medium">用户名</th>
@@ -69,6 +70,7 @@ function UsersInner() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </>
